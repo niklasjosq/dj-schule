@@ -11,7 +11,7 @@
   --bad: #ff5f5f;
   --device: #232326;
   --radius: 18px;
-  font-family: "Fredoka", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  font-family: "Fredoka", "Arial Rounded MT Bold", "Nunito", "Avenir Next", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 body {

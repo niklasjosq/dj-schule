@@ -24,6 +24,8 @@ log = logging.getLogger(__name__)
 
 MODES = ["frei", "lektion", "spiel"]
 MODE_NAMES = {"frei": "Freies Spielen", "lektion": "Lektionen", "spiel": "Rhythmus-Spiel"}
+# Erlaubte Eingaben aus dem Browser: Art -> Anzahl gültiger Indizes
+WEB_CONTROLS = {"pad": 64, "track": 8, "scene": 8, "shift": 1}
 
 
 class EventBus:
@@ -215,7 +217,7 @@ class App:
 
     def set_mode(self, mode: str) -> None:
         with self.lock:
-            if mode == self.mode:
+            if mode not in MODES or mode == self.mode:
                 return
             if self.mode == "lektion":
                 self.lessons.leave(self)
@@ -234,22 +236,31 @@ class App:
             self.refresh_leds()
 
     def handle_web(self, data: dict) -> None:
+        """Nachricht aus dem Browser – wird streng geprüft, bevor sie etwas auslöst."""
+        if not isinstance(data, dict):
+            return
         t = data.get("t")
         if t in ("press", "release"):
-            self.handle(ControlEvent(data["kind"], int(data["index"]), t == "press", source="web"))
+            kind, index = data.get("kind"), _as_int(data.get("index"))
+            if kind in WEB_CONTROLS and index is not None and 0 <= index < WEB_CONTROLS[kind]:
+                self.handle(ControlEvent(kind, index, t == "press", source="web"))
         elif t == "fader":
-            self.handle(ControlEvent("fader", int(data["index"]), value=float(data["value"]), source="web"))
+            index, value = _as_int(data.get("index")), _as_float(data.get("value"))
+            if index is not None and 0 <= index < 9 and value is not None:
+                self.handle(ControlEvent("fader", index, value=min(max(value, 0.0), 1.0), source="web"))
         elif t == "mode":
-            self.set_mode(data["mode"])
+            self.set_mode(str(data.get("mode")))
         elif t == "metronome":
-            self.set_metronome(bool(data["on"]))
+            self.set_metronome(bool(data.get("on")))
         elif t == "instrument":
             self.set_instrument((self.instrument + 1) % len(KEY_INSTRUMENTS))
         elif t == "lesson":
-            with self.lock:
-                self.set_mode("lektion")
-                self.lessons.start(self, int(data["index"]))
-                self.refresh_leds()
+            index = _as_int(data.get("index"))
+            if index is not None:
+                with self.lock:
+                    self.set_mode("lektion")
+                    self.lessons.start(self, index)
+                    self.refresh_leds()
 
     # ------------------------------------------------------------ Zustand für den Browser
 
@@ -377,3 +388,13 @@ class App:
         self._running = False
         if self._ticker:
             self._ticker.join(timeout=1)
+
+
+def _as_int(v) -> Optional[int]:
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def _as_float(v) -> Optional[float]:
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v:  # v == v: kein NaN
+        return float(v)
+    return None

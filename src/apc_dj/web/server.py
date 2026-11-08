@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +20,13 @@ def create_server(core: App) -> FastAPI:
 
     @api.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
+        # Nur die eigene Oberfläche darf sich verbinden – keine fremden Webseiten
+        # (Schutz vor Cross-Site WebSocket Hijacking).
+        origin = websocket.headers.get("origin")
+        if origin is not None and urlparse(origin).netloc != websocket.headers.get("host"):
+            log.warning("WebSocket von fremder Herkunft abgelehnt: %s", origin)
+            await websocket.close(code=1008)
+            return
         await websocket.accept()
         loop = asyncio.get_running_loop()
         queue = core.bus.subscribe(loop)
@@ -31,7 +39,10 @@ def create_server(core: App) -> FastAPI:
         task = asyncio.create_task(sender())
         try:
             while True:
-                data = await websocket.receive_json()
+                try:
+                    data = await websocket.receive_json()
+                except ValueError:
+                    continue  # kein gültiges JSON
                 try:
                     core.handle_web(data)
                 except Exception:  # noqa: BLE001

@@ -20,3 +20,45 @@ def test_websocket_roundtrip(lib, tmp_path):
         seen = {ws.receive_json()["t"] for _ in range(6)}
         assert "status" in seen or "game" in seen
     assert core.mode == "spiel"
+
+
+def test_foreign_origin_is_rejected(lib, tmp_path):
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    core = App(AudioEngine(120), lib, EventBus(), progress_file=tmp_path / "p.json")
+    client = TestClient(create_server(core))
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws", headers={"origin": "https://boese-seite.example"}) as ws:
+            ws.receive_json()
+    with client.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws:
+        assert ws.receive_json()["t"] == "state"
+
+
+def test_invalid_browser_messages_are_ignored(lib, tmp_path):
+    core = App(AudioEngine(120), lib, EventBus(), progress_file=tmp_path / "p.json")
+    for bad in [
+        {"t": "press", "kind": "track", "index": 100},
+        {"t": "press", "kind": "pad", "index": -1},
+        {"t": "press", "kind": "note", "index": 60},
+        {"t": "press", "kind": "__class__", "index": 0},
+        {"t": "press", "kind": "pad", "index": "5"},
+        {"t": "fader", "index": 0, "value": float("nan")},
+        {"t": "fader", "index": 42, "value": 0.5},
+        {"t": "mode", "mode": "hacker"},
+        {"t": "lesson", "index": "x"},
+        ["keine", "dict"],
+    ]:
+        core.handle_web(bad)
+    assert core.mode == "frei" and core.engine._cmds == type(core.engine._cmds)()
+    core.handle_web({"t": "fader", "index": 0, "value": 7})
+    assert core.engine.gains[0] == 1.0
+
+
+def test_broken_audio_command_does_not_kill_audio():
+    import numpy as np
+
+    e = AudioEngine(120)
+    e.stop_column(100)  # ungültige Spalte
+    out = e.render(256)
+    assert out.shape == (256, 2) and np.isfinite(out).all()

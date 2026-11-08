@@ -197,7 +197,10 @@ class AudioEngine:
 
     def render(self, frames: int) -> np.ndarray:
         while self._cmds:
-            self._cmds.popleft()()
+            try:
+                self._cmds.popleft()()
+            except Exception:  # noqa: BLE001 – ein fehlerhafter Befehl darf den Ton nie abwürgen
+                log.exception("Fehler beim Ausführen eines Audio-Befehls")
         f0 = self.frame
         f1 = f0 + frames
         tracks = np.zeros((N_TRACKS, frames, 2), np.float32)

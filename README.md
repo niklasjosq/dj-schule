@@ -112,3 +112,17 @@ src/apc_dj/
 tools/midi_monitor.py
 tests/                uv run pytest
 ```
+
+## Sicherheit & Datenschutz
+
+* Die Oberfläche läuft standardmäßig nur auf diesem Rechner (`127.0.0.1`).
+* Die WebSocket-Schnittstelle nimmt nur Verbindungen der eigenen Oberfläche an. Fremde Webseiten im selben
+  Browser können die App nicht fernsteuern. Alle Eingaben aus dem Browser werden auf gültige Werte geprüft.
+* Mit `--host 0.0.0.0` kann **jedes Gerät im selben WLAN** die Oberfläche öffnen und bedienen, ohne Passwort.
+  Das nur in vertrauenswürdigen Netzen nutzen.
+* Es werden keine externen Dienste geladen und keine Daten gesendet. Der Lernfortschritt bleibt lokal in
+  `data/progress.json` und wird nicht eingecheckt, genauso wie eigene Sounds in `sounds/eigene/`.
+
+## Lizenz
+
+[MIT](LICENSE)
