@@ -23,6 +23,7 @@ import numpy as np
 from scipy import signal
 
 from .library import bar_frames
+from .recorder import Recorder
 from .synth import SR
 
 log = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ class AudioEngine:
         self._running = False
         self.latency = 0.0
         self.clock = time.monotonic  # in Tests austauschbar
+        self.recorder: Optional[Recorder] = None
         self.snapshot = self._make_snapshot(self.clock(), 0)
 
     # ------------------------------------------------------------ Steuerung (thread-sicher)
@@ -270,6 +272,8 @@ class AudioEngine:
 
         out, self._zi = signal.lfilter(self._b, self._a, out, axis=0, zi=self._zi)
         out = np.tanh(out).astype(np.float32)  # Soft-Limiter
+        if self.recorder is not None and self.recorder.active:
+            self.recorder.feed(out)
         self.frame = f1
         return out
 

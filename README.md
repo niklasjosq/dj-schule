@@ -210,6 +210,20 @@ den Lektionen). Die Farben am Controller und am Bildschirm sind identisch.
   Wenn die Bewertung systematisch zu früh oder zu spät ist, lässt sie sich mit `timing_offset_ms` in
   `config.toml` justieren.
 
+## DJ-Set aufnehmen
+
+Oben in der Oberfläche startet **⏺ Aufnahme** die Aufnahme, ein zweiter Klick stoppt sie. Aufgenommen wird
+genau das, was aus dem Lautsprecher kommt: Loops, Effekte, Keyboard, Fader und Filter. Die fertigen Sets erscheinen
+in der Karte **„Meine Aufnahmen“** zum Anhören und Herunterladen und liegen als WAV im Ordner `aufnahmen/`.
+
+* Eine Aufnahme dauert **höchstens 5 Minuten** (etwa 58 MB) und stoppt dann von selbst. 30 Sekunden vor Schluss
+  wird die Anzeige gelb.
+* Passt keine volle Aufnahme mehr in **1 GB** für den ganzen Ordner, startet keine neue. Dann alte Aufnahmen mit 🗑️
+  löschen.
+* Beide Grenzen und der Ordner lassen sich im Abschnitt `[aufnahme]` in [`config.toml`](config.toml) ändern.
+* 🗑️ neben einer Aufnahme löscht sie. Zur Sicherheit muss man innerhalb von 3 Sekunden ein zweites Mal klicken.
+* Auch wenn die App während einer Aufnahme beendet wird (Strg+C), bleibt die Datei abspielbar.
+
 ## Eigene Sounds
 
 Lege WAV-Loops in [`sounds/eigene/`](sounds/eigene/README.md); sie erscheinen in Spalte 8.
@@ -242,6 +256,7 @@ src/apc_dj/
   audio/synth.py      Oszillatoren, Hüllkurven, Instrumente
   audio/library.py    erzeugt Drums, Effekte, Loops (Am–F–C–G) + lädt eigene WAVs
   audio/engine.py     Echtzeit-Mixer: Taktraster, quantisierte Loops, Fader, Filter, Metronom
+  audio/recorder.py   Aufnahme der Master-Summe als WAV (eigener Schreib-Thread)
   layout.py           welche Taste macht was
   app.py              zentrale Logik: Eingaben → Klang, LEDs, Browser
   lessons.py          geführte Lektionen
@@ -259,7 +274,11 @@ tests/                uv run pytest
 * Mit `--host 0.0.0.0` kann **jedes Gerät im selben WLAN** die Oberfläche öffnen und bedienen, ohne Passwort.
   Das nur in vertrauenswürdigen Netzen nutzen.
 * Es werden keine externen Dienste geladen und keine Daten gesendet. Der Lernfortschritt bleibt lokal in
-  `data/progress.json` und wird nicht eingecheckt, genauso wie eigene Sounds in `sounds/eigene/`.
+  `data/progress.json` und wird nicht eingecheckt, genauso wie eigene Sounds in `sounds/eigene/` und
+  Aufnahmen in `aufnahmen/`.
+* Über `/aufnahmen/…` liefert der Server nur Dateien mit dem Namensmuster `DJ-Set_….wav` aus dem
+  Aufnahme-Ordner aus, keine anderen Dateien. Bei `--host 0.0.0.0` kann jedes Gerät im WLAN die Aufnahmen
+  anhören.
 
 ## Lizenz
 

@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..app import App
@@ -52,6 +53,15 @@ def create_server(core: App) -> FastAPI:
         finally:
             task.cancel()
             core.bus.unsubscribe(queue)
+
+    @api.get("/aufnahmen/{name}")
+    def recording(name: str, download: bool = False) -> FileResponse:
+        # Nur Aufnahmen mit gültigem Namen aus dem Aufnahme-Ordner – kein Zugriff auf andere Dateien.
+        path = core.recording_path(name)
+        if path is None:
+            raise HTTPException(status_code=404)
+        return FileResponse(path, media_type="audio/wav", filename=path.name if download else None,
+                            content_disposition_type="attachment" if download else "inline")
 
     api.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return api

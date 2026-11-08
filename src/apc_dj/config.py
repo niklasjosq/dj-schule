@@ -17,6 +17,9 @@ class Config:
     timing_offset_ms: float = 0.0
     sounds_dir: Path = Path("sounds/eigene")
     progress_file: Path = Path("data/progress.json")
+    recordings_dir: Path = Path("aufnahmen")
+    max_rec_minutes: float = 5.0
+    max_rec_total_mb: float = 1000.0
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -34,6 +37,11 @@ class Config:
         c.open_browser = bool(w.get("browser_oeffnen", c.open_browser))
         g = d.get("spiel", {})
         c.timing_offset_ms = float(g.get("timing_offset_ms", c.timing_offset_ms))
+        r = d.get("aufnahme", {})
+        if "ordner" in r:
+            c.recordings_dir = Path(r["ordner"])
+        c.max_rec_minutes = float(r.get("max_minuten", c.max_rec_minutes))
+        c.max_rec_total_mb = float(r.get("max_gesamt_mb", c.max_rec_total_mb))
         if "eigene_sounds" in d:
             c.sounds_dir = Path(d["eigene_sounds"])
         return c

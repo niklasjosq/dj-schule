@@ -4,7 +4,8 @@
 const $ = (id) => document.getElementById(id);
 const S = { layout: [], leds: {}, buttons: { track: Array(8).fill(0), scene: Array(8).fill(0) },
             faders: Array(9).fill(0.8), mode: "frei", metronome: false, lessons: null, game: null,
-            beat: { active: false, bar: 0, beat: 0, step: 0 }, targets: [] };
+            beat: { active: false, bar: 0, beat: 0, step: 0 }, targets: [],
+            recording: false, rec_seconds: 0, rec_max: 300, recordings: [] };
 const EL = { pads: [], tracks: [], scenes: [], faders: [] };
 let ws = null;
 
@@ -58,6 +59,7 @@ function build() {
     b.addEventListener("click", () => send({ t: "mode", mode: b.dataset.mode })));
   $("metronome").addEventListener("click", () => send({ t: "metronome", on: !S.metronome }));
   $("instrument").addEventListener("click", () => send({ t: "instrument" }));
+  $("rec").addEventListener("click", () => send({ t: "record", on: !S.recording }));
   buildGameGrid();
 }
 
@@ -114,6 +116,61 @@ function renderStatus() {
   $("panelFrei").hidden = S.mode !== "frei";
   $("panelLektion").hidden = S.mode !== "lektion";
   $("panelSpiel").hidden = S.mode !== "spiel";
+  renderRec();
+}
+
+// ------------------------------------------------------------------ Aufnahme
+function clock(sec) { sec = Math.max(0, Math.round(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; }
+
+function renderRec() {
+  const b = $("rec");
+  b.classList.toggle("on", S.recording);
+  const left = S.rec_max - S.rec_seconds;
+  b.classList.toggle("ending", S.recording && left <= 30);
+  b.textContent = S.recording ? `🔴 ${clock(S.rec_seconds)} / ${clock(S.rec_max)} – Stopp` : "⏺ Aufnahme";
+}
+
+function renderRecordings() {
+  const list = $("recList");
+  list.replaceChildren();
+  if (!S.recordings.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "Noch keine Aufnahmen – drück oben auf ⏺ Aufnahme!";
+    list.appendChild(li);
+    return;
+  }
+  for (const r of S.recordings) {
+    const url = `/aufnahmen/${encodeURIComponent(r.name)}`;
+    const li = document.createElement("li");
+    const head = document.createElement("div");
+    head.className = "rec-head";
+    const title = document.createElement("span");
+    title.textContent = `🎧 ${r.date}`;
+    const meta = document.createElement("small");
+    meta.textContent = `${clock(r.seconds)} · ${(r.bytes / 1e6).toFixed(1)} MB`;
+    const dl = document.createElement("a");
+    dl.href = `${url}?download=1`;
+    dl.textContent = "⬇️ Download";
+    dl.title = r.name;
+    const del = document.createElement("button");
+    del.className = "rec-del";
+    del.textContent = "🗑️";
+    del.title = "Aufnahme löschen";
+    del.addEventListener("click", () => {
+      if (del.classList.contains("confirm")) { send({ t: "delete_recording", name: r.name }); return; }
+      del.classList.add("confirm");
+      del.textContent = "Wirklich löschen?";
+      setTimeout(() => { del.classList.remove("confirm"); del.textContent = "🗑️"; }, 3000);
+    });
+    head.append(title, meta, dl, del);
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.preload = "none";
+    audio.src = url;
+    li.append(head, audio);
+    list.appendChild(li);
+  }
 }
 
 function renderFaders() {
@@ -231,11 +288,12 @@ function onMessage(m) {
     case "state":
       Object.assign(S, { layout: m.layout, leds: m.leds, buttons: m.buttons, faders: m.faders, filter: m.filter,
         mode: m.mode, metronome: m.metronome, instrument: m.instrument, bpm: m.bpm, lessons: m.lessons, game: m.game,
-        sceneLabels: m.scene_labels, trackLabels: m.track_labels });
+        sceneLabels: m.scene_labels, trackLabels: m.track_labels,
+        recording: m.recording, rec_seconds: m.rec_seconds, rec_max: m.rec_max, recordings: m.recordings || [] });
       $("conn").textContent = m.controller ? "🎛️ APC verbunden" : "🖱️ ohne Controller";
       renderLegend(m.columns);
       for (let p = 0; p < 64; p++) renderPad(p);
-      renderButtons(); renderStatus(); renderFaders(); renderLessons(); renderGame();
+      renderButtons(); renderStatus(); renderFaders(); renderLessons(); renderGame(); renderRecordings();
       break;
     case "leds":
       Object.assign(S.leds, m.pads);
@@ -256,6 +314,8 @@ function onMessage(m) {
     case "lesson": S.lessons = m; renderLessons(); break;
     case "game": S.game = m; renderGame(); break;
     case "game_hit": toast(m.rating); break;
+    case "rec": S.rec_seconds = m.seconds; renderRec(); break;
+    case "recordings": S.recordings = m.items; renderRecordings(); break;
   }
 }
 

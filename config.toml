@@ -16,5 +16,10 @@ host = "127.0.0.1"       # "0.0.0.0", um die Oberfläche z. B. auf einem Tablet 
 port = 8000
 browser_oeffnen = true
 
+[aufnahme]
+ordner = "aufnahmen"     # hier landen die aufgenommenen DJ-Sets (WAV)
+max_minuten = 5          # längste Aufnahme; danach wird automatisch gestoppt (ca. 11,5 MB pro Minute)
+max_gesamt_mb = 1000     # passt keine volle Aufnahme mehr in dieses Limit, startet keine neue
+
 [spiel]
 timing_offset_ms = 0     # Feinjustierung der Timing-Bewertung im Rhythmus-Spiel

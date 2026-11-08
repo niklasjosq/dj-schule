@@ -39,6 +39,10 @@ header {
   border: 0; border-radius: 999px; padding: 8px 14px; background: var(--card); font-size: .95rem; color: var(--text);
 }
 .pill.on { background: var(--ok); color: #05301a; }
+.pill.rec { cursor: pointer; font-weight: 600; }
+.pill.rec.on { background: var(--bad); color: #fff; animation: recpulse 1.2s ease-in-out infinite; font-variant-numeric: tabular-nums; }
+.pill.rec.on.ending { background: var(--warn); color: #2a1a00; }
+@keyframes recpulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--bad) 35%, transparent); } }
 #conn.ok { background: #1f4d36; }
 #conn.bad { background: #5a1f2a; }
 
@@ -131,6 +135,15 @@ aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .info p { margin: 0; font-size: 1.1rem; color: var(--muted); line-height: 1.35; }
 .info.pop { animation: pop .25s; }
 @keyframes pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } }
+.recordings { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; max-height: 340px; overflow-y: auto; }
+.recordings li { background: var(--bg2); border-radius: 12px; padding: 10px 12px; }
+.recordings li.empty { color: var(--muted); background: none; padding: 0; }
+.rec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 6px; }
+.rec-head small { color: var(--muted); }
+.rec-head a { margin-left: auto; color: var(--accent); text-decoration: none; }
+.rec-del { border: 0; border-radius: 999px; padding: 3px 9px; background: var(--card); color: var(--text); cursor: pointer; font-size: .9rem; }
+.rec-del.confirm { background: var(--bad); color: #fff; font-weight: 600; }
+.recordings audio { width: 100%; height: 36px; }
 .howto { padding-left: 18px; margin: 0; line-height: 1.5; color: var(--muted); }
 .howto b { color: var(--text); }
 .filter-meter { display: flex; gap: 10px; align-items: center; margin-top: 12px; }

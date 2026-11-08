@@ -62,3 +62,21 @@ def test_broken_audio_command_does_not_kill_audio():
     e.stop_column(100)  # ungültige Spalte
     out = e.render(256)
     assert out.shape == (256, 2) and np.isfinite(out).all()
+
+
+def test_recording_download_and_path_traversal(lib, tmp_path):
+    rec = tmp_path / "aufnahmen"
+    rec.mkdir()
+    (rec / "DJ-Set_2026-01-01_10-00-00.wav").write_bytes(b"RIFF....WAVE")
+    (tmp_path / "geheim.wav").write_bytes(b"geheim")
+    (rec / "notizen.txt").write_text("x")
+    core = App(AudioEngine(120), lib, EventBus(), progress_file=tmp_path / "p.json", recordings_dir=rec)
+    client = TestClient(create_server(core))
+    r = client.get("/aufnahmen/DJ-Set_2026-01-01_10-00-00.wav")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
+    assert "attachment" not in r.headers.get("content-disposition", "")
+    r = client.get("/aufnahmen/DJ-Set_2026-01-01_10-00-00.wav?download=1")
+    assert "attachment" in r.headers["content-disposition"]
+    for bad in ["../geheim.wav", "%2e%2e%2fgeheim.wav", "..%2Fgeheim.wav", "notizen.txt",
+                "DJ-Set_2026-01-01_10-00-01.wav", "DJ-Set_..%2F..%2Fgeheim.wav"]:
+        assert client.get(f"/aufnahmen/{bad}").status_code == 404, bad

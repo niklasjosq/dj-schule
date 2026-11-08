@@ -55,6 +55,7 @@ def run(engine, seconds):
 def app(lib, tmp_path):
     engine = AudioEngine(120)
     engine.clock = lambda: engine.frame / 48000
-    a = App(engine, lib, RecordingBus(), progress_file=tmp_path / "p.json")
+    a = App(engine, lib, RecordingBus(), progress_file=tmp_path / "p.json",
+            recordings_dir=tmp_path / "aufnahmen")
     a.controller = FakeController()
     return a

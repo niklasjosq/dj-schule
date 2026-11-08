@@ -16,6 +16,7 @@
     </nav>
     <div class="status">
       <button id="metronome" class="pill" title="Metronom (Szene-Knopf 6)">⏱️ Metronom</button>
+      <button id="rec" class="pill rec" title="DJ-Set aufnehmen">⏺ Aufnahme</button>
       <button id="instrument" class="pill" title="Instrument wechseln (Szene-Knopf 5)">🎹 Klavier</button>
       <span class="pill" id="bpm">120 BPM</span>
       <span class="pill" id="conn">⏳ verbinde …</span>
@@ -63,6 +64,7 @@
           <li><b>Fader 1–8:</b> Lautstärke jeder Spalte · <b>Fader 9:</b> Gesamtlautstärke</li>
           <li><b>SHIFT + Fader 9:</b> Filter (klingt wie unter Wasser)</li>
           <li><b>Runde Knöpfe rechts:</b> Szene 1–4, Instrument, Metronom, Modus, Alles stopp</li>
+          <li><b>⏺ Aufnahme (oben):</b> nimmt dein DJ-Set auf – danach kannst du es unten anhören</li>
         </ul>
         <div class="filter-meter"><span>🌊 Filter</span><div><i id="filterBar"></i></div></div>
       </div>
@@ -82,6 +84,11 @@
         <div class="game-msg" id="gMsg">Hör zu – spiel nach!</div>
         <div class="game-grid" id="gGrid"></div>
         <p class="hint">Spiel mit den 4 orangen Pads in der Mitte links nach: Kick, Snare, Clap, HiHat.</p>
+      </div>
+
+      <div class="card" id="panelAufnahmen">
+        <h3>🎙️ Meine Aufnahmen</h3>
+        <ul class="recordings" id="recList"></ul>
       </div>
     </aside>
   </main>

@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
+
+import soundfile as sf
 
 from .audio.engine import COLUMNS as N_COLUMNS
 from .audio.engine import TRACK_KEYS, TRACK_SHOTS, AudioEngine
 from .audio.library import KEY_INSTRUMENTS, Library
+from .audio.recorder import Recorder
 from .controller import PALETTE, SCENE_BASE, TRACK_BASE, ControlEvent, PadLed
 from .layout import COLUMNS, SCENE_LABELS, TRACK_LABELS, PadSpec, build_layout
 from .lessons import LessonRunner
@@ -26,6 +32,8 @@ MODES = ["frei", "lektion", "spiel"]
 MODE_NAMES = {"frei": "Freies Spielen", "lektion": "Lektionen", "spiel": "Rhythmus-Spiel"}
 # Erlaubte Eingaben aus dem Browser: Art -> Anzahl gültiger Indizes
 WEB_CONTROLS = {"pad": 64, "track": 8, "scene": 8, "shift": 1}
+RECORDING_PATTERN = r"DJ-Set_[0-9_-]+\.wav"
+WAV_BYTES_PER_SECOND = 48000 * 2 * 2  # 48 kHz, Stereo, 16 Bit
 
 
 class EventBus:
@@ -57,7 +65,9 @@ class EventBus:
 
 class App:
     def __init__(self, engine: AudioEngine, lib: Library, bus: Optional[EventBus] = None,
-                 timing_offset_ms: float = 0.0, progress_file=None):
+                 timing_offset_ms: float = 0.0, progress_file=None,
+                 recordings_dir: Path = Path("aufnahmen"), max_rec_minutes: float = 5.0,
+                 max_rec_total_mb: float = 1000.0):
         self.engine = engine
         self.lib = lib
         self.bus = bus or EventBus()
@@ -78,6 +88,12 @@ class App:
         self._ticker: Optional[threading.Thread] = None
         self._running = False
         engine.clicks = lib.clicks
+        self.recordings_dir = Path(recordings_dir)
+        self.max_rec_seconds = max_rec_minutes * 60
+        self.max_rec_bytes = max_rec_total_mb * 1_000_000
+        self.recorder = Recorder(self.max_rec_seconds)
+        engine.recorder = self.recorder
+        self._rec_second = -1
 
     # ------------------------------------------------------------ Hilfen
 
@@ -235,6 +251,109 @@ class App:
             self.bus.publish({"t": "status", **self.status()})
             self.refresh_leds()
 
+    # ------------------------------------------------------------ Aufnahme
+
+    def set_recording(self, on: bool) -> None:
+        with self.lock:
+            if on == self.recorder.active:
+                return
+            if on:
+                used = sum(f.stat().st_size for f in self._recording_files())
+                if used + self.max_rec_seconds * WAV_BYTES_PER_SECOND > self.max_rec_bytes:
+                    self.info("💾", "Speicher voll", "Lösch alte Aufnahmen aus dem Ordner "
+                              f"„{self.recordings_dir}“, dann kannst du wieder aufnehmen.")
+                    return
+                self.recordings_dir.mkdir(parents=True, exist_ok=True)
+                stem = f"DJ-Set_{datetime.now():%Y-%m-%d_%H-%M-%S}"
+                path, n = self.recordings_dir / f"{stem}.wav", 2
+                while path.exists():
+                    path, n = self.recordings_dir / f"{stem}_{n}.wav", n + 1
+                try:
+                    self.recorder.start(path)
+                except Exception as e:  # noqa: BLE001
+                    log.exception("Aufnahme konnte nicht starten")
+                    self.info("⚠️", "Aufnahme geht nicht", str(e))
+                    return
+                self._rec_second = 0
+                minutes = f"{self.max_rec_seconds / 60:g}"
+                self.info("🔴", "Aufnahme läuft", f"Alles, was du jetzt spielst, wird aufgenommen – "
+                          f"bis zu {minutes} Minuten. Drück noch mal auf ⏺, um zu stoppen.")
+            else:
+                full = self.recorder.full
+                path = self.recorder.stop()
+                self._rec_second = -1
+                name = path.name if path else ""
+                if full:
+                    self.info("⏱️", f"{self.max_rec_seconds / 60:g} Minuten voll – Aufnahme gespeichert",
+                              f"Dein DJ-Set heißt „{name}“. Du findest es unter „Meine Aufnahmen“.")
+                else:
+                    self.info("💾", "Aufnahme gespeichert",
+                              f"Dein DJ-Set heißt „{name}“. Du findest es unter „Meine Aufnahmen“.")
+                self.bus.publish({"t": "recordings", "items": self.recordings()})
+            self.bus.publish({"t": "status", **self.status()})
+
+    def _recording_files(self) -> list[Path]:
+        if not self.recordings_dir.is_dir():
+            return []
+        return [f for f in self.recordings_dir.iterdir()
+                if f.is_file() and re.fullmatch(RECORDING_PATTERN, f.name)]
+
+    def recording_path(self, name: str) -> Optional[Path]:
+        """Pfad einer Aufnahme – nur für gültige Namen innerhalb des Aufnahme-Ordners."""
+        if not isinstance(name, str) or not re.fullmatch(RECORDING_PATTERN, name):
+            return None
+        base = self.recordings_dir.resolve()
+        path = (base / name).resolve()
+        if not path.is_relative_to(base) or not path.is_file():
+            return None
+        if self.recorder.active and self.recorder.path and path == self.recorder.path.resolve():
+            return None  # wird gerade noch geschrieben
+        return path
+
+    def recordings(self) -> list[dict]:
+        items = []
+        current = self.recorder.path.resolve() if self.recorder.active and self.recorder.path else None
+        for f in self._recording_files():
+            if current is not None and f.resolve() == current:
+                continue
+            try:
+                seconds = sf.info(str(f)).duration
+            except Exception:  # noqa: BLE001 – kaputte Datei: trotzdem anzeigen
+                seconds = 0.0
+            st = f.stat()
+            items.append({"name": f.name, "seconds": round(seconds, 1), "bytes": st.st_size,
+                          "date": datetime.fromtimestamp(st.st_mtime).strftime("%d.%m.%Y %H:%M"),
+                          "_mtime": st.st_mtime})
+        items.sort(key=lambda i: i["_mtime"], reverse=True)
+        for i in items:
+            del i["_mtime"]
+        return items
+
+    def delete_recording(self, name) -> None:
+        with self.lock:
+            path = self.recording_path(name)
+            if path is None:
+                return
+            try:
+                path.unlink()
+            except OSError as e:
+                log.warning("Aufnahme konnte nicht gelöscht werden: %s", e)
+                self.info("⚠️", "Löschen ging nicht", str(e))
+                return
+            self.info("🗑️", "Aufnahme gelöscht", f"„{path.name}“ ist weg.")
+            self.bus.publish({"t": "recordings", "items": self.recordings()})
+
+    def _tick_recording(self) -> None:
+        if not self.recorder.active:
+            return
+        if self.recorder.full:
+            self.set_recording(False)
+            return
+        sec = int(self.recorder.seconds)
+        if sec != self._rec_second:
+            self._rec_second = sec
+            self.bus.publish({"t": "rec", "seconds": sec})
+
     def handle_web(self, data: dict) -> None:
         """Nachricht aus dem Browser – wird streng geprüft, bevor sie etwas auslöst."""
         if not isinstance(data, dict):
@@ -254,6 +373,10 @@ class App:
             self.set_metronome(bool(data.get("on")))
         elif t == "instrument":
             self.set_instrument((self.instrument + 1) % len(KEY_INSTRUMENTS))
+        elif t == "record":
+            self.set_recording(data.get("on") is True)
+        elif t == "delete_recording":
+            self.delete_recording(data.get("name"))
         elif t == "lesson":
             index = _as_int(data.get("index"))
             if index is not None:
@@ -267,7 +390,9 @@ class App:
     def status(self) -> dict:
         _, label, emoji, _ = KEY_INSTRUMENTS[self.instrument]
         return {"mode": self.mode, "metronome": self.engine.metronome,
-                "instrument": f"{emoji} {label}", "bpm": self.engine.bpm}
+                "instrument": f"{emoji} {label}", "bpm": self.engine.bpm,
+                "recording": self.recorder.active, "rec_seconds": int(self.recorder.seconds),
+                "rec_max": int(self.max_rec_seconds)}
 
     def state(self) -> dict:
         with self.lock:
@@ -281,6 +406,7 @@ class App:
                 "faders": self.faders, "filter": self.engine.cutoff,
                 "controller": getattr(self.controller, "name", None),
                 "lessons": self.lessons.state(), "game": self.game.state(),
+                "recordings": self.recordings(),
                 **self.status(),
             }
 
@@ -368,6 +494,7 @@ class App:
                 self.lessons.tick(self)
             elif self.mode == "spiel":
                 self.game.tick(self)
+            self._tick_recording()
             self.refresh_leds()
 
     def start(self) -> None:
@@ -388,6 +515,9 @@ class App:
         self._running = False
         if self._ticker:
             self._ticker.join(timeout=1)
+        if self.recorder.active:
+            path = self.recorder.stop()
+            log.info("Aufnahme gespeichert: %s", path)
 
 
 def _as_int(v) -> Optional[int]:

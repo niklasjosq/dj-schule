@@ -11,8 +11,9 @@ dist/
 .coverage
 htmlcov/
 
-# Lokale Daten der App (Lernfortschritt der Kinder)
+# Lokale Daten der App (Lernfortschritt und Aufnahmen der Kinder)
 data/
+aufnahmen/
 
 # Eigene Sounds (oft urheberrechtlich geschützt) – nur die Anleitung einchecken
 sounds/eigene/*

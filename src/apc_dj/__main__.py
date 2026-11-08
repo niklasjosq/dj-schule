@@ -50,7 +50,9 @@ def main() -> None:
     device = engine.start()
     print(f"🔊 Audio: {device}")
 
-    core = App(engine, lib, timing_offset_ms=cfg.timing_offset_ms, progress_file=cfg.progress_file)
+    core = App(engine, lib, timing_offset_ms=cfg.timing_offset_ms, progress_file=cfg.progress_file,
+               recordings_dir=cfg.recordings_dir, max_rec_minutes=cfg.max_rec_minutes,
+               max_rec_total_mb=cfg.max_rec_total_mb)
     if not args.no_controller:
         try:
             from .controller import APCMiniMk2
