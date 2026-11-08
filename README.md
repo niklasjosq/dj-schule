@@ -159,15 +159,24 @@ Der Browser öffnet sich auf <http://localhost:8000>. Beenden mit `Strg+C`; dabe
 
 Weitere Einstellungen stehen in [`config.toml`](config.toml).
 
-### Schreibtisch-Icon (macOS)
+### Schreibtisch-Icon (macOS und Linux)
 
 ```bash
 uv run --with pillow python tools/make_desktop_app.py
 ```
 
-Das legt **DJ-Schule.app** mit eigenem Icon auf den Schreibtisch. Ein Doppelklick startet die App ohne Terminal
-und öffnet den Browser. Beenden über das Dock oder mit `Cmd+Q`; dabei gehen auch die LEDs aus. Die Ausgabe steht
-in `data/apc-dj.log`. Wenn der Projektordner verschoben wird, das Skript einfach erneut ausführen.
+Das Skript erkennt das System selbst. Wenn der Projektordner verschoben wird, das Skript einfach erneut ausführen.
+
+* **macOS:** Legt **DJ-Schule.app** mit eigenem Icon auf den Schreibtisch. Ein Doppelklick startet die App ohne
+  Terminal und öffnet den Browser. Beenden über das Dock oder mit `Cmd+Q`; dabei gehen auch die LEDs aus. Die
+  Ausgabe steht in `data/apc-dj.log`.
+* **Linux (Ubuntu, Lubuntu):** Legt den Starter **DJ-Schule** auf den Schreibtisch (`~/Schreibtisch` bzw.
+  `~/Desktop`) und ins Anwendungsmenü (Kategorie Multimedia/Bildung). Ein Doppelklick öffnet ein Terminalfenster
+  mit der App und den Browser. Beenden mit `Strg+C` oder durch Schließen des Fensters; auch dabei gehen die LEDs
+  aus. Bei einem Fehler bleibt das Fenster offen, damit die Meldung lesbar ist.
+  Ubuntu zeigt neue Starter auf dem Schreibtisch manchmal erst grau an: dann einmal Rechtsklick → **„Start
+  erlauben“**. Die installierten Dateien liegen in `~/.local/share/dj-schule/` und
+  `~/.local/share/applications/dj-schule.desktop`.
 
 ## Belegung
 

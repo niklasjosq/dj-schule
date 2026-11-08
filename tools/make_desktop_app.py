@@ -1,11 +1,16 @@
-"""Baut „DJ-Schule.app“ mit eigenem Icon und legt sie auf den Schreibtisch (macOS).
+"""Legt die DJ-Schule mit eigenem Icon auf den Schreibtisch (macOS und Linux).
 
-    uv run --with pillow python tools/make_desktop_app.py            # Icon + App + Schreibtisch
+    uv run --with pillow python tools/make_desktop_app.py               # Icon + Starter + Schreibtisch
     uv run --with pillow python tools/make_desktop_app.py --no-install  # nur nach build/
 
-Doppelklick auf die App startet die DJ-Schule im Hintergrund und öffnet den Browser.
+macOS: baut „DJ-Schule.app“. Doppelklick startet die DJ-Schule im Hintergrund und öffnet den Browser;
 „Beenden“ (Dock oder Cmd+Q) schickt Strg+C an die App, damit auch die LEDs ausgehen.
-Die Ausgabe steht in data/apc-dj.log. Wird der Projektordner verschoben, das Skript neu ausführen.
+Die Ausgabe steht in data/apc-dj.log.
+
+Linux (Ubuntu, Lubuntu, …): legt einen Starter „DJ-Schule“ auf den Schreibtisch und ins Anwendungsmenü.
+Doppelklick öffnet ein Terminalfenster mit der App und den Browser; Strg+C oder Schließen des Fensters beendet sie.
+
+Wird der Projektordner verschoben, das Skript neu ausführen.
 """
 from __future__ import annotations
 
@@ -36,21 +41,26 @@ def _lerp(a, b, t):
     return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
 
 
-def draw_icon(size: int = 1024) -> Image.Image:
-    """Zeichnet das Icon im macOS-Raster (abgerundetes Quadrat mit Schatten), 4× überabgetastet."""
+def draw_icon(size: int = 1024, macos: bool = True) -> Image.Image:
+    """Zeichnet das Icon (abgerundetes Quadrat), 4× überabgetastet.
+
+    macos=True: Apple-Raster mit Rand und Schatten; sonst fast randlos wie bei Linux-Icon-Themes.
+    """
     s = size * 4
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
 
-    # Grundfläche: 824/1024 des Rasters, Radius ~ 185/1024 (Apple-Vorgabe)
-    inset, radius = round(s * 100 / 1024), round(s * 185 / 1024)
+    # macOS: Grundfläche 824/1024 des Rasters, Radius ~ 185/1024 (Apple-Vorgabe)
+    inset = round(s * (100 if macos else 32) / 1024)
+    radius = round((s - 2 * inset) * 185 / 824)
     box = (inset, inset, s - inset, s - inset)
     mask = Image.new("L", (s, s), 0)
     ImageDraw.Draw(mask).rounded_rectangle(box, radius, fill=255)
 
-    shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle((box[0], box[1] + s // 80, box[2], box[3] + s // 80), radius,
-                                             fill=(0, 0, 0, 140))
-    img.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(s / 70)))
+    if macos:
+        shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).rounded_rectangle((box[0], box[1] + s // 80, box[2], box[3] + s // 80), radius,
+                                                 fill=(0, 0, 0, 140))
+        img.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(s / 70)))
 
     # Hintergrund: Farbverlauf + rosa/violetter Schein wie in der Oberfläche
     bg = Image.new("RGBA", (s, s))
@@ -173,28 +183,144 @@ def build_app(uv: str, icns: Path) -> Path:
     return app
 
 
+# ------------------------------------------------------------------ Linux
+
+def _sh(s: str) -> str:
+    """Zeichenkette für die Shell in einfache Anführungszeichen setzen."""
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+def _desktop_exec(s: str) -> str:
+    """Pfad für die Exec-Zeile einer .desktop-Datei (Desktop Entry Spec)."""
+    for ch in ("\\", '"', "`", "$"):
+        s = s.replace(ch, "\\" + ch)
+    return f'"{s}"'.replace("\\", "\\\\").replace("%", "%%")
+
+
+def linux_start_script(uv: str) -> str:
+    return f"""#!/bin/sh
+# Startet die DJ-Schule (erzeugt von tools/make_desktop_app.py)
+printf '\\033]0;DJ-Schule\\007'
+cd {_sh(str(ROOT))} || {{ echo "Projektordner nicht gefunden:" {_sh(str(ROOT))}; read _; exit 1; }}
+echo "🎧 DJ-Schule startet … Zum Beenden Strg+C drücken oder dieses Fenster schließen."
+echo
+trap : INT    # Strg+C nur an die App, das Skript zeigt danach ggf. noch die Meldung
+{_sh(uv)} sync -q && .venv/bin/apc-dj
+status=$?
+if [ "$status" -ne 0 ] && [ "$status" -ne 130 ]; then
+    echo
+    echo "⚠️  Die DJ-Schule wurde mit einem Fehler beendet (Code $status)."
+    printf "Enter drücken zum Schließen … "
+    read _
+fi
+"""
+
+
+def linux_desktop_entry(start: Path, icon: Path) -> str:
+    return f"""[Desktop Entry]
+Type=Application
+Version=1.0
+Name=DJ-Schule
+GenericName=DJ-Lernprogramm
+Comment=DJ lernen mit dem AKAI APC mini mk2
+Exec={_desktop_exec(str(start))}
+Icon={icon}
+Terminal=true
+Categories=AudioVideo;Audio;Education;Music;
+Keywords=DJ;MIDI;APC;Musik;
+StartupNotify=false
+"""
+
+
+def _desktop_dir() -> Path | None:
+    """Schreibtisch-Ordner laut XDG (z. B. ~/Schreibtisch bei deutscher Sprache)."""
+    try:
+        out = subprocess.run(["xdg-user-dir", "DESKTOP"], capture_output=True, text=True, check=True).stdout.strip()
+        if out and Path(out) != Path.home():
+            return Path(out)
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    for name in ("Schreibtisch", "Desktop"):
+        if (Path.home() / name).is_dir():
+            return Path.home() / name
+    return None
+
+
+def _make_trusted(path: Path) -> None:
+    """Ausführbar + „vertrauenswürdig“, damit Ubuntu (GNOME) und Lubuntu (PCManFM-Qt) ohne Rückfrage starten."""
+    path.chmod(0o755)
+    try:
+        subprocess.run(["gio", "set", str(path), "metadata::trusted", "true"], capture_output=True, check=False)
+    except OSError:
+        pass
+
+
+def install_linux(uv: str, no_install: bool, dest: Path | None) -> None:
+    icon = draw_icon(macos=False)
+    out = BUILD / "linux"
+    out.mkdir(parents=True, exist_ok=True)
+    icon.save(BUILD / "icon.png")
+
+    data_home = Path.home() / ".local" / "share"
+    base = out if no_install else data_home / "dj-schule"
+    base.mkdir(parents=True, exist_ok=True)
+    icon_file = base / "dj-schule.png"
+    icon.resize((512, 512), Image.LANCZOS).save(icon_file)
+    start = base / "start.sh"
+    start.write_text(linux_start_script(uv), encoding="utf-8")
+    start.chmod(0o755)
+    entry = linux_desktop_entry(start, icon_file)
+    (out / "dj-schule.desktop").write_text(entry, encoding="utf-8")
+    print(f"✅ gebaut: {out / 'dj-schule.desktop'}")
+    if no_install:
+        return
+
+    menu = data_home / "applications" / "dj-schule.desktop"
+    menu.parent.mkdir(parents=True, exist_ok=True)
+    menu.write_text(entry, encoding="utf-8")
+    menu.chmod(0o755)
+    print(f"📋 im Anwendungsmenü: {menu}")
+
+    desk = dest or _desktop_dir()
+    if desk is None or not desk.is_dir():
+        print("ℹ️  Kein Schreibtisch-Ordner gefunden – Starter nur im Anwendungsmenü.")
+        return
+    target = desk / "dj-schule.desktop"
+    target.write_text(entry, encoding="utf-8")
+    _make_trusted(target)
+    print(f"🖥️  auf dem Schreibtisch: {target}")
+    print("   Ubuntu: Falls das Icon noch grau ist, Rechtsklick → „Start erlauben“.")
+
+
+# ------------------------------------------------------------------ Start
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--no-install", action="store_true", help="nicht auf den Schreibtisch kopieren")
-    ap.add_argument("--dest", type=Path, default=Path.home() / "Desktop")
+    ap.add_argument("--no-install", action="store_true", help="nur nach build/ bauen, nichts installieren")
+    ap.add_argument("--dest", type=Path, help="Zielordner statt des Schreibtischs")
     args = ap.parse_args()
 
-    if sys.platform != "darwin":
-        sys.exit("Nur für macOS.")
     uv = shutil.which("uv")
     if not uv:
         sys.exit("uv nicht gefunden – siehe https://docs.astral.sh/uv/")
-
+    uv = str(Path(uv).resolve())
     BUILD.mkdir(exist_ok=True)
+
+    if sys.platform.startswith("linux"):
+        install_linux(uv, args.no_install, args.dest)
+        return
+    if sys.platform != "darwin":
+        sys.exit("Nur für macOS und Linux.")
+
     icon = draw_icon()
     icon.save(BUILD / "icon.png")
     icns = BUILD / "AppIcon.icns"
     make_icns(icon, icns)
-    app = build_app(str(Path(uv).resolve()), icns)
+    app = build_app(uv, icns)
     print(f"✅ gebaut: {app}")
 
     if not args.no_install:
-        target = args.dest / app.name
+        target = (args.dest or Path.home() / "Desktop") / app.name
         shutil.rmtree(target, ignore_errors=True)
         shutil.copytree(app, target, symlinks=True)
         subprocess.run(["touch", str(target)])  # Finder lädt das Icon neu
