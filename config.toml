@@ -1,0 +1,20 @@
+# Einstellungen der DJ-Schule
+
+# Tempo in Schlägen pro Minute. Alle Demo-Loops werden passend erzeugt.
+# Eigene WAV-Loops sollten im gleichen Tempo sein.
+bpm = 120
+
+# Ordner mit eigenen Loops (Spalte 8, max. 4 Dateien: WAV/AIFF/FLAC)
+eigene_sounds = "sounds/eigene"
+
+[audio]
+blocksize = 256          # kleiner = weniger Verzögerung, größer = stabiler
+lautstaerke_max = 0.85   # Obergrenze der Gesamtlautstärke (Ohren schützen!)
+
+[web]
+host = "127.0.0.1"       # "0.0.0.0", um die Oberfläche z. B. auf einem Tablet im WLAN zu öffnen
+port = 8000
+browser_oeffnen = true
+
+[spiel]
+timing_offset_ms = 0     # Feinjustierung der Timing-Bewertung im Rhythmus-Spiel
