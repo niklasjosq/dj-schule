@@ -14,10 +14,129 @@ live, welche Tasten gedrückt werden, und erklärt, was passiert.
 ## Installation
 
 Voraussetzung: macOS oder Linux mit [uv](https://docs.astral.sh/uv/) (installiert Python 3.12 automatisch).
+Unter Linux zuerst die [Systempakete](#linux-ubuntu-und-lubuntu) installieren.
 
 ```bash
 uv sync
 ```
+
+### Linux (Ubuntu und Lubuntu)
+
+Die Anleitung gilt für **Ubuntu und Lubuntu 22.04 LTS und 24.04 LTS** (auch Zwischenversionen ab 20.04).
+Lubuntu ist dasselbe System mit schlankerer Oberfläche (LXQt); alle Schritte sind identisch. Andere Distributionen
+siehe [unten](#andere-distributionen).
+
+Voraussetzung ist ein **64-Bit-Rechner** (x86_64, oder ARM64 wie ein Raspberry Pi 4/5 mit Ubuntu). Das ist bei
+Lubuntu ab Version 19.04 ohnehin der Fall. Ubuntu 18.04 und älter ist zu alt (zu altes glibc für die fertigen
+Python-Pakete).
+
+**1. Systempakete installieren**
+
+Terminal öffnen (Ubuntu: `Strg+Alt+T`; Lubuntu: Menü → Systemwerkzeuge → QTerminal) und eingeben:
+
+```bash
+sudo apt update
+sudo apt install libportaudio2 alsa-utils curl
+```
+
+* `libportaudio2` ist für die Tonausgabe nötig. Fehlt das Paket, startet die App trotzdem, bleibt aber **stumm**
+  (im Terminal steht dann „Keine Audioausgabe … laufe stumm weiter“).
+* `alsa-utils` bringt `amidi` und `aconnect` zum Prüfen der MIDI-Verbindung mit.
+* `curl` fehlt bei einer frischen Ubuntu-Installation und wird für den uv-Installer gebraucht.
+* libsndfile und die MIDI-Bibliothek stecken schon in den Python-Paketen; Python selbst holt uv.
+
+Danach uv installieren und die App im Projektordner einrichten:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # danach Terminal schließen und neu öffnen
+cd ~/midi-controller                               # bzw. dort, wo der Projektordner liegt
+uv sync
+```
+
+**2. Treiber prüfen**
+
+Der APC mini mk2 ist ein standardkonformes USB-MIDI-Gerät. Es braucht **keinen Herstellertreiber**. Der Ubuntu-Kernel
+bringt alles mit:
+
+| Kernelmodul | Aufgabe |
+|---|---|
+| `snd_usb_audio` | USB-Audio- und USB-MIDI-Treiber, erkennt den Controller |
+| `snd_rawmidi` | MIDI-Grundlage, wird von `snd_usb_audio` mitgeladen |
+| `snd_seq` | ALSA-Sequencer; darüber findet und öffnet die App die MIDI-Ports |
+
+Ubuntu lädt diese Module automatisch, sobald der Controller angesteckt wird. Prüfen (Controller eingesteckt):
+
+```bash
+lsusb | grep -i akai                      # Controller vom System erkannt?
+lsmod | grep -E 'snd_usb_audio|snd_seq'   # Module geladen?
+amidi -l                                  # MIDI-Ports, z. B. „APC mini mk2 … Contr“ und „… Notes“
+aconnect -l                               # dasselbe aus Sicht des ALSA-Sequencers
+```
+
+Fehlt ein Modul, von Hand laden und dauerhaft eintragen:
+
+```bash
+sudo modprobe snd-usb-audio
+sudo modprobe snd-seq
+printf 'snd-usb-audio\nsnd-seq\n' | sudo tee /etc/modules-load.d/apc-dj.conf
+```
+
+Meldet `modprobe`, dass das Modul nicht gefunden wird (kommt bei Cloud- oder Minimal-Images mit `linux-virtual`
+vor), fehlt das Paket mit den Zusatzmodulen:
+
+```bash
+sudo apt install linux-modules-extra-$(uname -r)   # danach neu starten
+```
+
+Zeigt `lsusb` keinen Akai-Eintrag, liegt es am Kabel oder USB-Anschluss: ein anderes Kabel (manche können nur laden)
+oder einen Port direkt am Rechner statt am Hub probieren. `sudo dmesg | tail` zeigt, was beim Einstecken passiert.
+
+**3. Zugriffsrechte**
+
+Wer sich normal am Ubuntu- oder Lubuntu-Desktop anmeldet, darf automatisch auf Audio- und MIDI-Geräte zugreifen.
+Nur wenn die App per SSH, ohne Desktop oder als Dienst läuft, muss der Benutzer in die Gruppe `audio`:
+
+```bash
+sudo usermod -aG audio "$USER"    # danach ab- und wieder anmelden
+groups                            # „audio“ sollte erscheinen
+```
+
+**4. Ton einrichten**
+
+Die App spielt über das ALSA-Standardgerät. Ubuntu leitet das an den Sound-Server weiter, also an den Ausgang, der
+in den Systemeinstellungen gewählt ist (Ubuntu: Einstellungen → Ton; Lubuntu: Lautsprecher-Symbol in der Leiste oder
+`pavucontrol-qt`). Welcher Sound-Server läuft, hängt von der Version ab:
+
+| Version | Sound-Server | nötige ALSA-Weiterleitung (normalerweise vorinstalliert) |
+|---|---|---|
+| 22.10 und neuer (z. B. 24.04) | PipeWire | `pipewire-alsa` |
+| 22.04 und älter | PulseAudio | `libasound2-plugins` |
+
+Kommt kein Ton, obwohl die App „🔊 Audio: …“ meldet, prüfen, ob die Weiterleitung da ist:
+
+```bash
+aplay -L | grep -E '^(pipewire|pulse)$'   # sollte „pipewire“ oder „pulse“ zeigen
+sudo apt install pipewire-alsa            # falls leer, auf 22.10+; auf 22.04: libasound2-plugins
+```
+
+Knackt oder stottert der Ton (vor allem auf älteren Rechnern, für die Lubuntu oft genutzt wird), in
+[`config.toml`](config.toml) `blocksize = 512` setzen.
+
+**5. Testen**
+
+```bash
+uv run python tools/midi_monitor.py   # Tasten drücken: jede Eingabe erscheint als MIDI-Nachricht
+uv run apc-dj
+```
+
+Der Standardbrowser (bei Ubuntu und Lubuntu Firefox) öffnet sich mit der Oberfläche. Auf einem Rechner ohne
+Bildschirm: `uv run apc-dj --no-browser --host 0.0.0.0` starten und die Oberfläche auf einem Tablet im selben WLAN
+öffnen (siehe [Sicherheit](#sicherheit--datenschutz)).
+
+#### Andere Distributionen
+
+Gleiche Schritte, andere Paketnamen: Debian / Linux Mint / Raspberry Pi OS (64 Bit) wie Ubuntu;
+Fedora `sudo dnf install portaudio alsa-utils`; Arch `sudo pacman -S portaudio alsa-utils`.
 
 ## Starten
 
@@ -35,7 +154,7 @@ Der Browser öffnet sich auf <http://localhost:8000>. Beenden mit `Strg+C`; dabe
 |---|---|
 | `--no-controller` | ohne Hardware starten (nur Browser) |
 | `--bpm 110` | anderes Tempo (alle Loops werden neu erzeugt) |
-| `--host 0.0.0.0` | Oberfläche im WLAN freigeben, z. B. für ein Tablet: `http://<IP-des-Macs>:8000` |
+| `--host 0.0.0.0` | Oberfläche im WLAN freigeben, z. B. für ein Tablet: `http://<IP-des-Rechners>:8000` |
 | `--no-browser` | Browser nicht automatisch öffnen |
 
 Weitere Einstellungen stehen in [`config.toml`](config.toml).

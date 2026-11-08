@@ -101,8 +101,10 @@ def button_message(note: int, state: int) -> mido.Message:
 
 
 def find_port(names: list[str], suffix: str) -> Optional[str]:
+    # Unter Linux kürzt ALSA die Namen, z. B. "APC mini mk2:APC mini mk2 APC mini mk2 Contr 20:0"
+    key = suffix[:5].lower()
     for n in names:
-        if PORT_HINT.lower() in n.lower() and suffix.lower() in n.lower():
+        if PORT_HINT.lower() in n.lower() and key in n.lower():
             return n
     for n in names:
         if PORT_HINT.lower() in n.lower() and suffix == "Control":

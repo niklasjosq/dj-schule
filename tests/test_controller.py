@@ -31,3 +31,11 @@ def test_find_port():
     assert find_port(names, "Control") == "APC mini mk2 Control"
     assert find_port(names, "Notes") == "APC mini mk2 Notes"
     assert find_port(["IAC"], "Control") is None
+
+
+def test_find_port_linux_alsa_names():
+    names = ["Midi Through:Midi Through Port-0 14:0",
+             "APC mini mk2:APC mini mk2 APC mini mk2 Notes 20:1",
+             "APC mini mk2:APC mini mk2 APC mini mk2 Contr 20:0"]
+    assert find_port(names, "Control") == names[2]
+    assert find_port(names, "Notes") == names[1]
