@@ -40,6 +40,16 @@ Der Browser öffnet sich auf <http://localhost:8000>. Beenden mit `Strg+C`; dabe
 
 Weitere Einstellungen stehen in [`config.toml`](config.toml).
 
+### Schreibtisch-Icon (macOS)
+
+```bash
+uv run --with pillow python tools/make_desktop_app.py
+```
+
+Das legt **DJ-Schule.app** mit eigenem Icon auf den Schreibtisch. Ein Doppelklick startet die App ohne Terminal
+und öffnet den Browser. Beenden über das Dock oder mit `Cmd+Q`; dabei gehen auch die LEDs aus. Die Ausgabe steht
+in `data/apc-dj.log`. Wenn der Projektordner verschoben wird, das Skript einfach erneut ausführen.
+
 ## Belegung
 
 ```
