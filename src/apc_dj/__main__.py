@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import sys
 import logging
+import signal
 import threading
 import time
 import webbrowser
@@ -67,6 +68,11 @@ def main() -> None:
 
     server = uvicorn.Server(uvicorn.Config(create_server(core), host=cfg.host, port=cfg.port,
                                            log_level="warning"))
+    # Auch bei `kill` und geschlossenem Terminalfenster sauber beenden (LEDs aus):
+    # uvicorn löst SIGTERM nach dem Herunterfahren erneut aus – ohne eigenen Handler endet der Prozess sofort.
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, lambda *_: setattr(server, "should_exit", True))
     try:
         asyncio.run(server.serve())
     except KeyboardInterrupt:
@@ -76,7 +82,10 @@ def main() -> None:
         if core.controller is not None:
             core.controller.close()
         engine.stop()
-        print("👋 Tschüss!")
+        try:
+            print("👋 Tschüss!")
+        except OSError:  # Terminal schon geschlossen
+            pass
 
 
 if __name__ == "__main__":
