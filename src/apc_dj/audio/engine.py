@@ -5,6 +5,8 @@
 * One-Shots und Keyboard-Töne laufen als "Voices" (sofort oder zu einem festen Frame).
 * Pro Spalte Lautstärke (Fader), Master-Lautstärke, Master-Tiefpass (Filter-Sweep),
   Metronom, Soft-Limiter.
+* Studio-Modus: Live-Effekte (fx.py) auf Loops + One-Shots; Keyboard und Metronom bleiben trocken.
+  Das Tempo lässt sich wechseln (set_tempo) – dabei stoppen alle Loops.
 
 Der Audio-Callback blockiert nie: Befehle kommen über eine deque herein und werden am
 Anfang jedes Blocks im Audio-Thread ausgeführt.
@@ -22,8 +24,9 @@ from typing import Callable, Optional
 import numpy as np
 from scipy import signal
 
-from .seq import bar_frames
+from .fx import LiveFX
 from .recorder import Recorder
+from .seq import bar_frames
 from .synth import SR
 
 log = logging.getLogger(__name__)
@@ -31,7 +34,8 @@ log = logging.getLogger(__name__)
 COLUMNS = 8
 TRACK_SHOTS = 8
 TRACK_KEYS = 9
-N_TRACKS = 10
+TRACK_CLICK = 10  # Metronom im Studio-Modus (ohne Effekte)
+N_TRACKS = 11
 
 
 @dataclass
@@ -73,7 +77,7 @@ class Snapshot:
 
 
 class AudioEngine:
-    def __init__(self, bpm: float = 120.0, blocksize: int = 256, master_max: float = 0.85):
+    def __init__(self, bpm: float = 120.0, blocksize: int = 256, master_max: float = 0.85, fx: bool = False):
         self.bpm = bpm
         self.bar = bar_frames(bpm)
         self.beat = self.bar / 4
@@ -100,6 +104,7 @@ class AudioEngine:
         self.latency = 0.0
         self.clock = time.monotonic  # in Tests austauschbar
         self.recorder: Optional[Recorder] = None
+        self.fx: Optional[LiveFX] = LiveFX(self.beat) if fx else None
         self.snapshot = self._make_snapshot(self.clock(), 0)
 
     # ------------------------------------------------------------ Steuerung (thread-sicher)
@@ -129,6 +134,19 @@ class AudioEngine:
     def set_cutoff(self, value: float) -> None:
         self.cutoff = float(np.clip(value, 0, 1))
         self._cmds.append(lambda: self._set_filter(self.cutoff))
+
+    def set_tempo(self, bpm: float) -> None:
+        """Neues Tempo (Musikstil gewechselt): alle Loops stoppen, Raster neu ab jetzt."""
+        self._cmds.append(lambda: self._set_tempo(float(bpm)))
+
+    def fx_on(self, i: int) -> None:
+        self._cmds.append(lambda: self.fx is not None and self.fx.on(i, self.frame, self.origin))
+
+    def fx_off(self, i: int) -> None:
+        self._cmds.append(lambda: self.fx is not None and self.fx.off(i))
+
+    def fx_reset(self) -> None:
+        self._cmds.append(lambda: self.fx is not None and self.fx.reset())
 
     def restart_grid(self) -> None:
         """Setzt das Taktraster auf 'jetzt', wenn keine Loop läuft (z. B. für das Spiel)."""
@@ -180,6 +198,17 @@ class AudioEngine:
         for slot in self.slots:
             slot.buf = slot.row = slot.pending_buf = slot.pending_row = slot.stop = None
         self.voices = [v for v in self.voices if v.track == TRACK_KEYS]
+        if self.fx is not None:
+            self.fx.reset()
+
+    def _set_tempo(self, bpm):
+        self._stop_all()
+        self.bpm = bpm
+        self.bar = bar_frames(bpm)
+        self.beat = self.bar / 4
+        self.origin = self.frame
+        if self.fx is not None:
+            self.fx.set_tempo(self.beat)
 
     def _play(self, buf, track, gain, key, at):
         start = self.frame if at is None else max(at, self.frame)
@@ -235,7 +264,7 @@ class AudioEngine:
                     break
                 if fb >= f0:
                     click = self.clicks[0] if k % 4 == 0 else self.clicks[1]
-                    self.voices.append(Voice(click, TRACK_SHOTS, fb, 1.0))
+                    self.voices.append(Voice(click, TRACK_CLICK if self.fx is not None else TRACK_SHOTS, fb, 1.0))
                 k += 1
 
         alive = []
@@ -260,11 +289,14 @@ class AudioEngine:
         # Lautstärken pro Spur glätten (kein Knacken)
         ramp = np.linspace(0, 1, frames, dtype=np.float32)[:, None]
         out = np.zeros((frames, 2), np.float32)
+        music = np.zeros((frames, 2), np.float32) if self.fx is not None else out
         for tr in range(N_TRACKS):
             g0, g1 = self._gains_now[tr], self.gains[tr]
             if g0 == 0 and g1 == 0:
                 continue
-            out += tracks[tr] * (g0 + (g1 - g0) * ramp)
+            (music if tr <= TRACK_SHOTS else out)[:] += tracks[tr] * (g0 + (g1 - g0) * ramp)
+        if self.fx is not None:
+            out += self.fx.process(music, f0, self.origin)
         self._gains_now = self.gains.copy()
         m0, m1 = self._master_now, self.master * self.master_max
         out *= m0 + (m1 - m0) * ramp
