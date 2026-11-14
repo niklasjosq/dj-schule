@@ -228,6 +228,57 @@ in der Karte **„Meine Aufnahmen“** zum Anhören und Herunterladen und liegen
 
 Lege WAV-Loops in [`sounds/eigene/`](sounds/eigene/README.md); sie erscheinen in Spalte 8.
 
+## Studio-Modus: Techno, Acid, Trance und 8-Bit
+
+Für größere DJs gibt es einen zusätzlichen Modus. Er ändert nichts am normalen Start: `uv run apc-dj` und das
+Schreibtisch-Icon bleiben genau wie oben beschrieben.
+
+```bash
+uv run apc-dj --studio            # oder dauerhaft: [studio] aktiv = true in config.toml
+```
+
+Oben in der Oberfläche erscheinen dann zwei Auswahllisten: **Musikstil** und **Tempo**. Ein Stil tauscht alle Loops,
+One-Shots und die 4 Keyboard-Instrumente aus. Das Raster, die Farben der Spalten, die Fader und alle Knöpfe bleiben
+gleich. Beim Wechsel stoppen die Loops, weil jeder Stil sein eigenes Tempo hat. Ein Stil wird beim ersten Mal in ein
+paar Sekunden erzeugt (die Musik läuft so lange nicht), danach ist er sofort da.
+
+| Stil | Tempo | Typische Klänge |
+|---|---|---|
+| 🎧 DJ-Schule | wie `bpm` in config.toml | der bisherige Klangsatz |
+| 🏭 Techno | 130 (120–145) | harte Kick, Rumble, Ride, Dub-Akkord mit Echo, Reese-Bass, hypnotische Sequenz |
+| 🧪 Acid | 128 (120–145) | quietschende Acid-Bässe mit Akzent und Slide, 808-Kuhglocke, Filter-Wellen |
+| 🌈 Trance/Rave | 138 (120–145) | Supersaw-Akkorde, Hoover, rollender Bass, Trance-Gate, Uplifter |
+| 👾 Electro/8-Bit | 120 (120–145) | 808-Drums, Rechteck/Dreieck-Klänge alter Konsolen, Münze, Sprung, Power-Up |
+
+Damit alles zusammenpasst, halten sich alle Stile an dieselben Regeln: a-Moll mit der Akkordfolge Am – F – C – G,
+jede Spalte hat dieselbe Aufgabe und dieselbe Lautstärke wie bei der DJ-Schule, und die One-Shot-Plätze bleiben
+gleich (Kick, Snare, Clap, HiHat vorne; Boom und Riser an derselben Stelle). Das Keyboard spielt in jedem Stil die
+a-Moll-Pentatonik – es klingt also nie falsch.
+
+**Live-Effekte:** unter dem Controller in der Oberfläche oder am Gerät mit **SHIFT + Track-Knopf**. Ein Effekt läuft,
+solange der Knopf gedrückt ist. SHIFT darf man vorher loslassen. Effekte wirken auf Loops und One-Shots, das
+Keyboard und das Metronom bleiben unverändert.
+
+| Track-Knopf | Effekt | Was passiert |
+|---|---|---|
+| 1 · 2 · 3 | 🔁 Wiederholer 1 · ½ · ¼ | Das letzte Stück (1, ½ oder ¼ Schlag) wird wiederholt. Beim Loslassen läuft die Musik genau im Takt weiter. |
+| 4 | ⏬ Bremse | Die Musik wird langsamer und tiefer, bis sie steht (Tape-Stop). |
+| 5 | 🗣️ Echo | Echo im Takt; nach dem Loslassen klingen die Wiederholungen aus. |
+| 6 | ✂️ Gate | Schaltet die Musik in Sechzehnteln an und aus. |
+| 7 | 👾 8-Bit | Bitcrusher: grober Konsolen-Klang. |
+| 8 | 🌪️ Hochpass | Die Bässe verschwinden innerhalb eines Takts; loslassen = Drop. |
+
+Im Studio-Modus gilt:
+
+* Ohne SHIFT stoppt ein Track-Knopf wie bisher seine Spalte. (Ohne Studio-Modus stoppt auch SHIFT + Track die Spalte.)
+* Solange SHIFT gedrückt ist, leuchten die Track-Knöpfe für die laufenden Effekte.
+* Die **Lektionen** schalten automatisch auf die DJ-Schule um und bleiben unverändert.
+* Das **Rhythmus-Spiel** benutzt die Drums und das Tempo des gewählten Stils; Effekte sind dort aus.
+* Jeder fertige Stil braucht etwa 200 MB. Die DJ-Schule bleibt immer geladen, dazu `speicher` (Standard 1) weitere
+  Stile – siehe `[studio]` in [`config.toml`](config.toml).
+* Zum Probehören beim Klang-Basteln: `uv run python tools/render_style.py techno --bpm 135` speichert alle Loops und
+  One-Shots als WAV in `data/vorhoeren/`.
+
 ## Wie funktioniert die Ansteuerung?
 
 Der APC mini mk2 ist ein ganz normales USB-MIDI-Gerät mit den Ports „APC mini mk2 Control“ und „APC mini mk2 Notes“
@@ -253,9 +304,13 @@ uv run python tools/midi_monitor.py --led-test # zeigt die Farbpalette auf dem R
 ```
 src/apc_dj/
   controller.py       MIDI-Protokoll, Port-Suche, LED-Ausgabe
-  audio/synth.py      Oszillatoren, Hüllkurven, Instrumente
-  audio/library.py    erzeugt Drums, Effekte, Loops (Am–F–C–G) + lädt eigene WAVs
+  audio/synth.py      Oszillatoren, Filter, Hüllkurven, Instrumente (auch Acid, Supersaw, Hoover, 8-Bit)
+  audio/drums.py      Schlagzeug und DJ-Effekte (auch 808/909-Klänge und Arcade-Geräusche)
+  audio/seq.py        Taktraster, Akkordfolge, Spalten-Regeln (gleiche Lautstärke in jedem Stil)
+  audio/styles/       Musikstile: schule (der bisherige Klangsatz), techno, acid, trance, chip
+  audio/library.py    baut den Klangsatz eines Stils + lädt eigene WAVs
   audio/engine.py     Echtzeit-Mixer: Taktraster, quantisierte Loops, Fader, Filter, Metronom
+  audio/fx.py         Live-Effekte des Studio-Modus (Wiederholer, Bremse, Echo, Gate, 8-Bit, Hochpass)
   audio/recorder.py   Aufnahme der Master-Summe als WAV (eigener Schreib-Thread)
   layout.py           welche Taste macht was
   app.py              zentrale Logik: Eingaben → Klang, LEDs, Browser
@@ -263,6 +318,7 @@ src/apc_dj/
   rhythm_game.py      Rhythmus-Spiel
   web/                FastAPI-Server + Oberfläche (HTML/CSS/JS ohne Build-Schritt)
 tools/midi_monitor.py
+tools/render_style.py Musikstil als WAV-Dateien speichern (zum Probehören)
 tests/                uv run pytest
 ```
 
