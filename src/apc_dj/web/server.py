@@ -19,6 +19,15 @@ STATIC = Path(__file__).parent / "static"
 def create_server(core: App) -> FastAPI:
     api = FastAPI(title="DJ-Schule")
 
+    @api.middleware("http")
+    async def no_stale_page(request, call_next):
+        # Der Browser soll die Oberfläche bei jedem Laden kurz prüfen (ETag) – sonst zeigt er nach einem
+        # Update oder beim Wechsel in den Studio-Modus noch die alte Seite.
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.endswith((".html", ".js", ".css")):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @api.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         # Nur die eigene Oberfläche darf sich verbinden – keine fremden Webseiten

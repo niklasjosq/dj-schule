@@ -92,3 +92,10 @@ def test_closing_the_browser_releases_held_effects(lib, tmp_path):
         assert ws.receive_json()["kind"] == "fx"
         assert core.fx_held == {3: "web"}
     assert core.fx_held == {}
+
+
+def test_page_is_always_revalidated(lib, tmp_path):
+    core = App(AudioEngine(120), lib, EventBus(), progress_file=tmp_path / "p.json")
+    client = TestClient(create_server(core))
+    for path in ("/", "/app.js", "/style.css"):
+        assert client.get(path).headers["cache-control"] == "no-cache"
