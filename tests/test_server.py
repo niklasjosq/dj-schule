@@ -80,3 +80,15 @@ def test_recording_download_and_path_traversal(lib, tmp_path):
     for bad in ["../geheim.wav", "%2e%2e%2fgeheim.wav", "..%2Fgeheim.wav", "notizen.txt",
                 "DJ-Set_2026-01-01_10-00-01.wav", "DJ-Set_..%2F..%2Fgeheim.wav"]:
         assert client.get(f"/aufnahmen/{bad}").status_code == 404, bad
+
+
+def test_closing_the_browser_releases_held_effects(lib, tmp_path):
+    core = App(AudioEngine(120, fx=True), lib, EventBus(), progress_file=tmp_path / "p.json", studio=True)
+    client = TestClient(create_server(core))
+    with client.websocket_connect("/ws") as ws:
+        state = ws.receive_json()
+        assert state["features"] == {"studio": True} and len(state["styles"]) == 5 and len(state["fx"]) == 8
+        ws.send_json({"t": "press", "kind": "fx", "index": 3})
+        assert ws.receive_json()["kind"] == "fx"
+        assert core.fx_held == {3: "web"}
+    assert core.fx_held == {}

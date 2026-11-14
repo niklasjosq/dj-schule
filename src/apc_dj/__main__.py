@@ -1,4 +1,4 @@
-"""Startet die DJ-Schule:  uv run apc-dj  [--no-controller] [--bpm 120] [--port 8000]"""
+"""Startet die DJ-Schule:  uv run apc-dj  [--studio] [--no-controller] [--bpm 120] [--port 8000]"""
 from __future__ import annotations
 
 import argparse
@@ -30,6 +30,7 @@ def main() -> None:
     ap.add_argument("--host")
     ap.add_argument("--port", type=int)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--studio", action="store_true", help="Studio-Modus: Musikstile mit eigenem Tempo + Live-Effekte")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
@@ -46,13 +47,20 @@ def main() -> None:
     lib = Library.build(cfg.bpm, cfg.sounds_dir)
     print(f"   fertig in {time.time() - t:.1f} s – {len(lib.loops)} Loops, {len(lib.oneshots)} One-Shots")
 
-    engine = AudioEngine(cfg.bpm, cfg.blocksize, cfg.master_max)
+    studio = args.studio or cfg.studio
+    engine = AudioEngine(cfg.bpm, cfg.blocksize, cfg.master_max, fx=studio)
     device = engine.start()
     print(f"🔊 Audio: {device}")
 
+    builder = None
+    if studio:
+        from .audio.styles.builder import StyleBuilder
+        builder = StyleBuilder()
+        print("🎚️  Studio-Modus: Musikstile mit eigenem Tempo + Live-Effekte (SHIFT + Track-Knopf)")
     core = App(engine, lib, timing_offset_ms=cfg.timing_offset_ms, progress_file=cfg.progress_file,
                recordings_dir=cfg.recordings_dir, max_rec_minutes=cfg.max_rec_minutes,
-               max_rec_total_mb=cfg.max_rec_total_mb)
+               max_rec_total_mb=cfg.max_rec_total_mb, studio=studio, builder=builder,
+               user_dir=cfg.sounds_dir, style_cache=cfg.studio_cache)
     if not args.no_controller:
         try:
             from .controller import APCMiniMk2

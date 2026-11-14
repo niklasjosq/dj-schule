@@ -53,6 +53,7 @@ def create_server(core: App) -> FastAPI:
         finally:
             task.cancel()
             core.bus.unsubscribe(queue)
+            core.web_disconnected()  # gehaltene Effekte loslassen (z. B. Tablet weg)
 
     @api.get("/aufnahmen/{name}")
     def recording(name: str, download: bool = False) -> FileResponse:

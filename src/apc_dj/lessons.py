@@ -172,6 +172,8 @@ class LessonRunner:
         self.mem = {}
         self.mistakes = 0
         self.finished_at = None
+        if app.studio:
+            app.select_style("schule", announce=False)  # Lektionen gehören zur DJ-Schule
         app.engine.stop_all()
         les = LESSONS[self.current]
         app.info(les.emoji, f"Lektion {self.current + 1}: {les.title}", les.intro)

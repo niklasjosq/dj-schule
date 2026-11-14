@@ -23,3 +23,9 @@ max_gesamt_mb = 1000     # passt keine volle Aufnahme mehr in dieses Limit, star
 
 [spiel]
 timing_offset_ms = 0     # Feinjustierung der Timing-Bewertung im Rhythmus-Spiel
+
+[studio]
+# Studio-Modus: Musikstile (Techno, Acid, Trance/Rave, 8-Bit) mit eigenem Tempo + Live-Effekte.
+# Auch ohne diese Einstellung startbar mit:  uv run apc-dj --studio
+aktiv = false
+speicher = 1             # so viele Musikstile (außer DJ-Schule) bleiben fertig im Speicher (je ca. 200 MB)

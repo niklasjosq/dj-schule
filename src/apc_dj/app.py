@@ -11,6 +11,7 @@ import logging
 import re
 import threading
 import time
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -19,7 +20,9 @@ import soundfile as sf
 
 from .audio.engine import COLUMNS as N_COLUMNS
 from .audio.engine import TRACK_KEYS, TRACK_SHOTS, AudioEngine
+from .audio.fx import FX_LIST
 from .audio.library import Library
+from .audio.styles import STYLE_BY_ID, STYLES
 from .audio.recorder import Recorder
 from .controller import PALETTE, SCENE_BASE, TRACK_BASE, ControlEvent, PadLed
 from .layout import COLUMNS, SCENE_LABELS, TRACK_LABELS, PadSpec, build_layout
@@ -67,9 +70,21 @@ class App:
     def __init__(self, engine: AudioEngine, lib: Library, bus: Optional[EventBus] = None,
                  timing_offset_ms: float = 0.0, progress_file=None,
                  recordings_dir: Path = Path("aufnahmen"), max_rec_minutes: float = 5.0,
-                 max_rec_total_mb: float = 1000.0):
+                 max_rec_total_mb: float = 1000.0, studio: bool = False, builder=None,
+                 user_dir: Optional[Path] = None, style_cache: int = 1):
         self.engine = engine
         self.lib = lib
+        # Studio-Modus: Musikstile (eigenes Tempo) + Live-Effekte. Ohne ihn bleibt alles wie bisher.
+        self.studio = studio
+        self.builder = builder
+        self.user_dir = user_dir
+        self.config_bpm = lib.bpm
+        self.style_cache = max(int(style_cache), 0)
+        self._libs: OrderedDict[tuple[str, float], Library] = OrderedDict({(lib.style, float(lib.bpm)): lib})
+        self._pinned = (lib.style, float(lib.bpm))
+        self.loading: Optional[tuple[str, float]] = None
+        self._request = 0
+        self.fx_held: dict[int, str] = {}  # Effekt -> Quelle ("hardware" / "web")
         self.bus = bus or EventBus()
         self.controller = None
         self.lock = threading.RLock()
@@ -118,10 +133,11 @@ class App:
 
     def handle(self, ev: ControlEvent) -> None:
         with self.lock:
-            if ev.kind in ("pad", "track", "scene", "shift"):
+            if ev.kind in ("pad", "track", "scene", "shift", "fx"):
                 key = (ev.kind, ev.index)
                 (self.pressed.add if ev.pressed else self.pressed.discard)(key)
                 self.bus.publish({"t": "press", "kind": ev.kind, "index": ev.index, "pressed": ev.pressed})
+            ev = self._translate(ev)
             getattr(self, f"_on_{ev.kind}")(ev)
             if self.mode == "lektion":
                 self.lessons.on_event(self, ev)
@@ -160,6 +176,40 @@ class App:
                 wait = " Sie startet genau auf der nächsten Eins." if s.running else ""
                 self.info(spec.emoji, spec.label, spec.info + wait)
 
+    def _translate(self, ev: ControlEvent) -> ControlEvent:
+        """Studio-Modus: SHIFT + Track-Knopf = Effekt (solange gedrückt). Loslassen beendet ihn – auch ohne SHIFT."""
+        if self.studio and ev.kind == "track" and (
+                (ev.pressed and self.shift) or (not ev.pressed and ev.index in self.fx_held)):
+            return ControlEvent("fx", ev.index, ev.pressed, source=ev.source)
+        return ev
+
+    def _on_fx(self, ev: ControlEvent) -> None:
+        if not self.studio or self.engine.fx is None or not 0 <= ev.index < len(FX_LIST):
+            return
+        i = ev.index
+        if ev.pressed:
+            if self.mode == "spiel":
+                self.info("🎯", "Im Spiel gibt es keine Effekte", "Hier zählt nur dein Rhythmus!")
+                return
+            self.fx_held[i] = ev.source
+            self.engine.fx_on(i)
+            label, emoji, text = FX_LIST[i]
+            self.info(emoji, label, text)
+        elif self.fx_held.pop(i, None) is not None:
+            self.engine.fx_off(i)
+        self.bus.publish({"t": "fx", "active": sorted(self.fx_held)})
+
+    def release_fx(self, source: Optional[str] = None) -> None:
+        """Effekte loslassen (alle oder nur die aus einer Quelle, z. B. wenn ein Browser weg ist)."""
+        with self.lock:
+            for i in [i for i, src in self.fx_held.items() if source is None or src == source]:
+                del self.fx_held[i]
+                self.engine.fx_off(i)
+            self.bus.publish({"t": "fx", "active": sorted(self.fx_held)})
+
+    def web_disconnected(self) -> None:
+        self.release_fx("web")
+
     def _on_note(self, ev: ControlEvent) -> None:
         """Gerät im eigenen Note/Drum-Modus: Ton direkt spielen."""
         if ev.pressed:
@@ -192,6 +242,7 @@ class App:
             self.set_mode(MODES[(MODES.index(self.mode) + 1) % len(MODES)])
         elif i == 7:
             self.engine.stop_all()
+            self._forget_fx()
             self.info("🛑", "Alles stopp", "Alle Loops sind aus. Stille!")
 
     def _on_shift(self, ev: ControlEvent) -> None:
@@ -221,6 +272,92 @@ class App:
             self.bus.publish(self.state())
             self.refresh_leds()
 
+    def _forget_fx(self) -> None:
+        """Die Engine hat die Effekte schon zurückgesetzt (stop_all / Tempo) – nur noch merken."""
+        if self.fx_held:
+            self.fx_held.clear()
+            self.bus.publish({"t": "fx", "active": []})
+
+    # ------------------------------------------------------------ Musikstile (Studio-Modus)
+
+    def select_style(self, style_id, bpm=None, announce: bool = True) -> None:
+        """Musikstil (und Tempo) wechseln. Neue Stile werden im Hintergrund erzeugt."""
+        with self.lock:
+            info = STYLE_BY_ID.get(style_id) if self.studio and isinstance(style_id, str) else None
+            if info is None:
+                return
+            if info.bpm_choices:
+                bpm = info.default_bpm if bpm is None else bpm
+                if bpm not in info.bpm_choices:
+                    return
+            else:
+                bpm = self.config_bpm
+            key = (info.id, float(bpm))
+            if self.mode == "lektion" and info.id != "schule":
+                self.info("📚", "Erst die Lektionen", "In den Lektionen spielen wir mit der DJ-Schule. "
+                          "Im freien Spielen kannst du die Musikstile ausprobieren.")
+                return
+            if key == (self.lib.style, float(self.lib.bpm)) and self.loading is None:
+                return
+            self._request += 1
+            token = self._request
+            self.engine.stop_all()
+            self._forget_fx()
+            if key in self._libs:
+                self.loading = None
+                self._apply_library(self._libs[key], announce)
+                return
+            if self.builder is None:
+                return
+            self.loading = key
+            self.info("⏳", f"{info.name} wird erzeugt …",
+                      f"Gleich geht's los – mit {bpm:g} BPM. Das dauert nur ein paar Sekunden.")
+            self.bus.publish({"t": "status", **self.status()})
+            future = self.builder.submit(info.id, float(bpm), self.user_dir)
+            future.add_done_callback(lambda f: self._on_built(key, token, f))
+
+    def _on_built(self, key, token, future) -> None:
+        with self.lock:
+            try:
+                lib = future.result()
+            except Exception as e:  # noqa: BLE001
+                log.exception("Musikstil %s konnte nicht erzeugt werden", key)
+                if token == self._request:
+                    self.loading = None
+                    self.info("⚠️", "Das hat nicht geklappt", f"Der Musikstil konnte nicht erzeugt werden: {e}")
+                    self.bus.publish({"t": "status", **self.status()})
+                return
+            self._libs[key] = lib
+            if token != self._request:
+                self._trim_cache()
+                return  # inzwischen wurde etwas anderes gewählt
+            self.loading = None
+            self._apply_library(lib, True)
+
+    def _apply_library(self, lib: Library, announce: bool) -> None:
+        key = (lib.style, float(lib.bpm))
+        self._libs.move_to_end(key)
+        self.lib = lib
+        self.engine.set_tempo(lib.bpm)
+        self.engine.clicks = lib.clicks
+        self.instrument = 0
+        self.layout = build_layout(lib, self.inst_name)
+        self._trim_cache()
+        if announce:
+            info = STYLE_BY_ID[lib.style]
+            self.info(info.emoji, f"{info.name} · {lib.bpm:g} BPM", info.intro + " Starte deine Loops neu!")
+        self.bus.publish(self.state())
+        self.refresh_leds()
+
+    def _trim_cache(self) -> None:
+        """DJ-Schule bleibt immer; von den anderen Stilen höchstens `style_cache` (der aktuelle zählt mit)."""
+        current = (self.lib.style, float(self.lib.bpm))
+        extra = [k for k in self._libs if k != self._pinned]
+        while len(extra) > max(self.style_cache, 1 if current != self._pinned else 0):
+            victim = next(k for k in extra if k != current)
+            extra.remove(victim)
+            del self._libs[victim]
+
     def set_metronome(self, on: bool) -> None:
         with self.lock:
             self.engine.metronome = on
@@ -239,6 +376,8 @@ class App:
                 self.lessons.leave(self)
             elif self.mode == "spiel":
                 self.game.stop(self)
+            if self.fx_held:
+                self.release_fx()
             self.mode = mode
             if mode == "lektion":
                 self.lessons.enter(self)
@@ -359,10 +498,16 @@ class App:
         if not isinstance(data, dict):
             return
         t = data.get("t")
+        controls = {**WEB_CONTROLS, "fx": len(FX_LIST)} if self.studio else WEB_CONTROLS
         if t in ("press", "release"):
             kind, index = data.get("kind"), _as_int(data.get("index"))
-            if kind in WEB_CONTROLS and index is not None and 0 <= index < WEB_CONTROLS[kind]:
+            if kind in controls and index is not None and 0 <= index < controls[kind]:
                 self.handle(ControlEvent(kind, index, t == "press", source="web"))
+        elif t == "style" and self.studio:
+            bpm = data.get("bpm")
+            bpm = None if bpm is None else _as_float(bpm)
+            if bpm is not None or data.get("bpm") is None:
+                self.select_style(data.get("id"), bpm)
         elif t == "fader":
             index, value = _as_int(data.get("index")), _as_float(data.get("value"))
             if index is not None and 0 <= index < 9 and value is not None:
@@ -372,7 +517,11 @@ class App:
         elif t == "metronome":
             self.set_metronome(bool(data.get("on")))
         elif t == "instrument":
-            self.set_instrument((self.instrument + 1) % len(self.lib.instruments))
+            index = _as_int(data.get("index"))
+            if index is None:
+                self.set_instrument((self.instrument + 1) % len(self.lib.instruments))
+            elif 0 <= index < len(self.lib.instruments):
+                self.set_instrument(index)
         elif t == "record":
             self.set_recording(data.get("on") is True)
         elif t == "delete_recording":
@@ -389,10 +538,15 @@ class App:
 
     def status(self) -> dict:
         inst = self.lib.instruments[self.instrument]
-        return {"mode": self.mode, "metronome": self.engine.metronome,
-                "instrument": f"{inst.emoji} {inst.label}", "bpm": self.engine.bpm,
-                "recording": self.recorder.active, "rec_seconds": int(self.recorder.seconds),
-                "rec_max": int(self.max_rec_seconds)}
+        out = {"mode": self.mode, "metronome": self.engine.metronome,
+               "instrument": f"{inst.emoji} {inst.label}", "bpm": self.lib.bpm,
+               "recording": self.recorder.active, "rec_seconds": int(self.recorder.seconds),
+               "rec_max": int(self.max_rec_seconds)}
+        if self.studio:
+            out.update(style=self.lib.style, instrument_index=self.instrument,
+                       loading=None if self.loading is None else {"id": self.loading[0], "bpm": self.loading[1]},
+                       fx_active=sorted(self.fx_held))
+        return out
 
     def state(self) -> dict:
         with self.lock:
@@ -407,8 +561,15 @@ class App:
                 "controller": getattr(self.controller, "name", None),
                 "lessons": self.lessons.state(), "game": self.game.state(),
                 "recordings": self.recordings(),
+                "features": {"studio": self.studio},
+                **(self._studio_state() if self.studio else {}),
                 **self.status(),
             }
+
+    def _studio_state(self) -> dict:
+        return {"styles": [s.to_ui(self.config_bpm) for s in STYLES],
+                "fx": [{"label": l, "emoji": e, "info": i} for l, e, i in FX_LIST],
+                "instruments": [{"label": i.label, "emoji": i.emoji} for i in self.lib.instruments]}
 
     @staticmethod
     def _led_ui(led: PadLed) -> list:
@@ -436,6 +597,8 @@ class App:
                 led = PadLed(spec.color, brightness=50)
             pads[p] = led
         track = [2 if (c in s.pending or c in s.stopping) else 1 if c in s.playing else 0 for c in range(8)]
+        if self.studio and self.shift:  # SHIFT gedrückt: Track-Knöpfe zeigen die Effekte
+            track = [1 if c in self.fx_held else 0 for c in range(8)]
         scene = [0] * 8
         for i in range(4):
             if i in s.pending.values():
@@ -515,6 +678,8 @@ class App:
         self._running = False
         if self._ticker:
             self._ticker.join(timeout=1)
+        if self.builder is not None:
+            self.builder.shutdown()
         if self.recorder.active:
             path = self.recorder.stop()
             log.info("Aufnahme gespeichert: %s", path)

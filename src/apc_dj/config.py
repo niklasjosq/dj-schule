@@ -20,6 +20,8 @@ class Config:
     recordings_dir: Path = Path("aufnahmen")
     max_rec_minutes: float = 5.0
     max_rec_total_mb: float = 1000.0
+    studio: bool = False
+    studio_cache: int = 1
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -42,6 +44,9 @@ class Config:
             c.recordings_dir = Path(r["ordner"])
         c.max_rec_minutes = float(r.get("max_minuten", c.max_rec_minutes))
         c.max_rec_total_mb = float(r.get("max_gesamt_mb", c.max_rec_total_mb))
+        st = d.get("studio", {})
+        c.studio = bool(st.get("aktiv", c.studio))
+        c.studio_cache = int(st.get("speicher", c.studio_cache))
         if "eigene_sounds" in d:
             c.sounds_dir = Path(d["eigene_sounds"])
         return c
