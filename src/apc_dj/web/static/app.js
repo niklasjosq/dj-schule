@@ -5,8 +5,10 @@ const $ = (id) => document.getElementById(id);
 const S = { layout: [], leds: {}, buttons: { track: Array(8).fill(0), scene: Array(8).fill(0) },
             faders: Array(9).fill(0.8), mode: "frei", metronome: false, lessons: null, game: null,
             beat: { active: false, bar: 0, beat: 0, step: 0 }, targets: [],
-            recording: false, rec_seconds: 0, rec_max: 300, recordings: [] };
-const EL = { pads: [], tracks: [], scenes: [], faders: [] };
+            recording: false, rec_seconds: 0, rec_max: 300, recordings: [],
+            features: { studio: false }, styles: [], style: "schule", loading: null, fx: [], fx_active: [],
+            instruments: [], instrument_index: 0 };
+const EL = { pads: [], tracks: [], scenes: [], faders: [], fx: [] };
 let ws = null;
 
 // ------------------------------------------------------------------ Aufbau
@@ -60,6 +62,11 @@ function build() {
   $("metronome").addEventListener("click", () => send({ t: "metronome", on: !S.metronome }));
   $("instrument").addEventListener("click", () => send({ t: "instrument" }));
   $("rec").addEventListener("click", () => send({ t: "record", on: !S.recording }));
+  $("styleSel").addEventListener("change", (e) => send({ t: "style", id: e.target.value }));
+  $("bpmSel").addEventListener("change", (e) => send({ t: "style", id: S.style, bpm: +e.target.value }));
+  $("instSel").addEventListener("change", (e) => send({ t: "instrument", index: +e.target.value }));
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseHeldFx(); });
+  window.addEventListener("blur", releaseHeldFx);
   buildGameGrid();
 }
 
@@ -117,6 +124,95 @@ function renderStatus() {
   $("panelLektion").hidden = S.mode !== "lektion";
   $("panelSpiel").hidden = S.mode !== "spiel";
   renderRec();
+  renderStudio();
+}
+
+// ------------------------------------------------------------------ Studio-Modus
+const heldFx = new Set();
+let shiftDown = false;
+const studioOn = () => !!(S.features && S.features.studio);
+
+function releaseHeldFx() {
+  heldFx.forEach((i) => send({ t: "release", kind: "fx", index: i }));
+  heldFx.clear();
+}
+
+function buildStudio() {
+  const on = studioOn();
+  document.body.classList.toggle("studio", on);
+  $("studioTag").hidden = !on;
+  $("fxbar").hidden = !on;
+  $("styleSel").hidden = !on;
+  $("instSel").hidden = !on;
+  $("instrument").hidden = on;
+  document.querySelectorAll(".studio-only").forEach((e) => (e.hidden = !on));
+  if (!on) return;
+  $("styleSel").replaceChildren(...S.styles.map((st) => new Option(`${st.emoji} ${st.name}`, st.id)));
+  $("instSel").replaceChildren(...S.instruments.map((ins, i) => new Option(`${ins.emoji} ${ins.label}`, i)));
+  const box = $("fxButtons");
+  if (EL.fx.length !== S.fx.length) {
+    box.replaceChildren();
+    EL.fx = S.fx.map((f, i) => {
+      const b = document.createElement("button");
+      b.className = "fxbtn";
+      const emo = document.createElement("span");
+      emo.textContent = f.emoji;
+      const lbl = document.createElement("small");
+      lbl.textContent = f.label;
+      b.append(emo, lbl);
+      b.title = `${f.label} – am Controller: SHIFT + Track-Knopf ${i + 1}`;
+      pressable(b, "fx", i);
+      b.addEventListener("pointerdown", () => heldFx.add(i));
+      ["pointerup", "pointercancel"].forEach((ev) => b.addEventListener(ev, () => heldFx.delete(i)));
+      box.appendChild(b);
+      return b;
+    });
+  }
+  renderStudio();
+}
+
+function renderStudio() {
+  if (!studioOn()) return;
+  const loading = S.loading;
+  const cur = S.styles.find((x) => x.id === S.style) || S.styles[0];
+  const shown = (loading && S.styles.find((x) => x.id === loading.id)) || cur;
+  document.documentElement.style.setProperty("--style", cur ? cur.color : "");
+  const lesson = S.mode === "lektion";
+  const sel = $("styleSel");
+  sel.value = shown ? shown.id : "";
+  sel.disabled = !!loading || lesson;
+  sel.title = lesson ? "In den Lektionen spielen wir mit der DJ-Schule" : "Musikstil wählen";
+  const choices = shown ? shown.bpm_choices : [];
+  const bpmSel = $("bpmSel");
+  bpmSel.hidden = !choices.length;
+  $("bpm").hidden = !!choices.length; // DJ-Schule: festes Tempo wie bisher
+  if (choices.length) {
+    if (bpmSel.dataset.style !== shown.id) {
+      bpmSel.replaceChildren(...choices.map((b) => new Option(`${b} BPM`, b)));
+      bpmSel.dataset.style = shown.id;
+    }
+    bpmSel.value = String(loading ? loading.bpm : S.bpm);
+    bpmSel.disabled = !!loading || lesson;
+  }
+  sel.classList.toggle("loading", !!loading);
+  bpmSel.classList.toggle("loading", !!loading);
+  $("instSel").value = String(S.instrument_index ?? 0);
+  renderFx();
+}
+
+function renderFx() {
+  EL.fx.forEach((b, i) => b.classList.toggle("on", (S.fx_active || []).includes(i)));
+  renderShift();
+}
+
+function renderShift() {
+  const on = studioOn() && shiftDown;
+  $("device").classList.toggle("shifted", on);
+  EL.tracks.forEach((t, i) => {
+    const f = on && S.fx[i];
+    t.textContent = f ? f.emoji : String(i + 1);
+    t.title = f ? `SHIFT + Track ${i + 1}: ${f.label}` : (S.trackLabels || [])[i] || "";
+  });
 }
 
 // ------------------------------------------------------------------ Aufnahme
@@ -289,10 +385,14 @@ function onMessage(m) {
       Object.assign(S, { layout: m.layout, leds: m.leds, buttons: m.buttons, faders: m.faders, filter: m.filter,
         mode: m.mode, metronome: m.metronome, instrument: m.instrument, bpm: m.bpm, lessons: m.lessons, game: m.game,
         sceneLabels: m.scene_labels, trackLabels: m.track_labels,
-        recording: m.recording, rec_seconds: m.rec_seconds, rec_max: m.rec_max, recordings: m.recordings || [] });
+        recording: m.recording, rec_seconds: m.rec_seconds, rec_max: m.rec_max, recordings: m.recordings || [],
+        features: m.features || { studio: false }, styles: m.styles || [], style: m.style || "schule",
+        loading: m.loading || null, fx: m.fx || [], fx_active: m.fx_active || [], instruments: m.instruments || [],
+        instrument_index: m.instrument_index || 0 });
       $("conn").textContent = m.controller ? "🎛️ APC verbunden" : "🖱️ ohne Controller";
       renderLegend(m.columns);
       for (let p = 0; p < 64; p++) renderPad(p);
+      buildStudio();
       renderButtons(); renderStatus(); renderFaders(); renderLessons(); renderGame(); renderRecordings();
       break;
     case "leds":
@@ -302,10 +402,12 @@ function onMessage(m) {
       break;
     case "press": {
       const el = m.kind === "pad" ? EL.pads[m.index] : m.kind === "track" ? EL.tracks[m.index]
-        : m.kind === "scene" ? EL.scenes[m.index] : $("shift");
+        : m.kind === "scene" ? EL.scenes[m.index] : m.kind === "fx" ? EL.fx[m.index] : $("shift");
       el?.classList.toggle("pressed", m.pressed);
+      if (m.kind === "shift") { shiftDown = m.pressed; renderShift(); }
       break;
     }
+    case "fx": S.fx_active = m.active; renderFx(); break;
     case "fader": S.faders[m.index] = m.value; renderFaders(); break;
     case "filter": S.filter = m.value; renderFaders(); break;
     case "beat": S.beat = m; renderBeat(); break;

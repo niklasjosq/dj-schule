@@ -92,3 +92,58 @@ class Library:
 def build_library(style: str, bpm: float, user_dir: Path | None = None) -> Library:
     """Für den Hintergrund-Prozess (muss auf Modulebene stehen, damit er sich übertragen lässt)."""
     return Library.build(bpm, user_dir, style)
+
+
+# --------------------------------------------------------------- Übergabe per Datei
+# Ein Stil hat ~200 MB Klangdaten. Statt sie durch eine Pipe zu schicken (doppelter Speicher, und macOS gibt
+# den Platz danach kaum zurück), schreibt der Hintergrund-Prozess sie in eine Datei, die die App nur einblendet.
+
+
+def _slots(lib: Library) -> list[tuple[object, object]]:
+    """Alle Klang-Arrays in fester Reihenfolge, als (Behälter, Schlüssel)."""
+    out: list[tuple[object, object]] = [(snd, "data") for snd in lib.oneshots]
+    out += [(lib.loops[k], "data") for k in sorted(lib.loops)]
+    out += [(lib.keys[i.id], n) for i in lib.instruments for n in range(len(lib.keys[i.id]))]
+    out += [(lib, "clicks")]
+    return out
+
+
+def _get(box, key):
+    return getattr(box, key) if isinstance(key, str) else box[key]
+
+
+def _set(box, key, value) -> None:
+    if isinstance(key, str):
+        setattr(box, key, value)
+    else:
+        box[key] = value
+
+
+def build_library_file(style: str, bpm: float, user_dir: Path | None, path: str):
+    """Im Hintergrund-Prozess: Stil bauen, Klänge in `path` schreiben, Rest (ohne Klänge) zurückgeben."""
+    lib = Library.build(bpm, user_dir, style)
+    shapes = []
+    with open(path, "wb") as f:
+        for box, key in _slots(lib):
+            value = _get(box, key)
+            parts = value if key == "clicks" else (value,)
+            shapes.append([p.shape for p in parts])
+            for part in parts:
+                np.ascontiguousarray(part, dtype=np.float32).tofile(f)
+            _set(box, key, None)
+    return lib, shapes
+
+
+def attach_library_file(lib: Library, shapes, path: str) -> Library:
+    """In der App: Klänge aus der Datei einblenden (nur lesen); die Datei selbst wird sofort gelöscht."""
+    mm = np.memmap(path, dtype=np.float32, mode="r")
+    Path(path).unlink(missing_ok=True)  # die Einblendung bleibt gültig, bis sie nicht mehr gebraucht wird
+    pos = 0
+    for (box, key), part_shapes in zip(_slots(lib), shapes):
+        parts = []
+        for shape in part_shapes:
+            n = int(np.prod(shape))
+            parts.append(mm[pos:pos + n].reshape(shape))
+            pos += n
+        _set(box, key, tuple(parts) if key == "clicks" else parts[0])
+    return lib

@@ -8,7 +8,7 @@
 </head>
 <body>
   <header>
-    <div class="logo">🎧 DJ-Schule</div>
+    <div class="logo">🎧 DJ-Schule <span class="studio-tag" id="studioTag" hidden>Studio</span></div>
     <nav class="modes" id="modes">
       <button data-mode="frei">🎧 Freies Spielen</button>
       <button data-mode="lektion">📚 Lektionen</button>
@@ -18,6 +18,9 @@
       <button id="metronome" class="pill" title="Metronom (Szene-Knopf 6)">⏱️ Metronom</button>
       <button id="rec" class="pill rec" title="DJ-Set aufnehmen">⏺ Aufnahme</button>
       <button id="instrument" class="pill" title="Instrument wechseln (Szene-Knopf 5)">🎹 Klavier</button>
+      <select id="instSel" class="pill" title="Instrument fürs Keyboard (auch: Szene-Knopf 5)" aria-label="Instrument" hidden></select>
+      <select id="styleSel" class="pill" title="Musikstil wählen" aria-label="Musikstil" hidden></select>
+      <select id="bpmSel" class="pill" title="Tempo (Schläge pro Minute)" aria-label="Tempo" hidden></select>
       <span class="pill" id="bpm">120 BPM</span>
       <span class="pill" id="conn">⏳ verbinde …</span>
     </div>
@@ -43,6 +46,10 @@
         <div class="faders" id="faders"></div>
         <div class="brand">AKAI APC mini mk2</div>
       </div>
+      <div class="fxbar" id="fxbar" hidden>
+        <div class="fx-title">🎛️ Effekte <small>gedrückt halten · am Controller: SHIFT + Track-Knopf</small></div>
+        <div class="fx-buttons" id="fxButtons"></div>
+      </div>
       <div class="legend" id="legend"></div>
     </section>
 
@@ -65,6 +72,8 @@
           <li><b>SHIFT + Fader 9:</b> Filter (klingt wie unter Wasser)</li>
           <li><b>Runde Knöpfe rechts:</b> Szene 1–4, Instrument, Metronom, Modus, Alles stopp</li>
           <li><b>⏺ Aufnahme (oben):</b> nimmt dein DJ-Set auf – danach kannst du es unten anhören</li>
+          <li class="studio-only" hidden><b>Musikstil (oben):</b> Techno, Acid, Trance oder 8-Bit – jeder Stil mit eigenem Tempo</li>
+          <li class="studio-only" hidden><b>SHIFT + Track-Knopf 1–8:</b> Effekte, solange du drückst (auch unter dem Controller)</li>
         </ul>
         <div class="filter-meter"><span>🌊 Filter</span><div><i id="filterBar"></i></div></div>
       </div>

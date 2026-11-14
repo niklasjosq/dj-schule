@@ -7,13 +7,15 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
+import os
+import tempfile
 import threading
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import Optional
 
-from ..library import build_library
+from ..library import attach_library_file, build_library, build_library_file
 
 log = logging.getLogger(__name__)
 
@@ -32,14 +34,28 @@ class StyleBuilder:
             return ThreadPoolExecutor(max_workers=1)
 
     def submit(self, style: str, bpm: float, user_dir: Optional[Path]) -> Future:
+        fd, path = tempfile.mkstemp(prefix="apc-dj-", suffix=".f32")
+        os.close(fd)
         with self._lock:
             if self._pool is None:
                 self._pool = self._new_pool()
             try:
-                return self._pool.submit(build_library, style, bpm, user_dir)
+                inner = self._pool.submit(build_library_file, style, bpm, user_dir, path)
             except (BrokenProcessPool, RuntimeError):
                 self._pool = self._new_pool()
-                return self._pool.submit(build_library, style, bpm, user_dir)
+                inner = self._pool.submit(build_library_file, style, bpm, user_dir, path)
+        outer: Future = Future()
+
+        def done(f: Future) -> None:
+            try:
+                lib, shapes = f.result()
+                outer.set_result(attach_library_file(lib, shapes, path))
+            except BaseException as e:  # noqa: BLE001
+                Path(path).unlink(missing_ok=True)
+                outer.set_exception(e)
+
+        inner.add_done_callback(done)
+        return outer
 
     def shutdown(self) -> None:
         with self._lock:

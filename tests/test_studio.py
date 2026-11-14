@@ -1,6 +1,8 @@
 """Studio-Modus: Musikstile mit eigenem Tempo und Live-Effekte – und ohne Studio-Modus bleibt alles wie bisher."""
 from concurrent.futures import Future
 
+import numpy as np
+
 import pytest
 
 from apc_dj.app import App
@@ -211,3 +213,21 @@ def test_real_builder_renders_in_a_separate_process():
     finally:
         b.shutdown()
     assert lib.style == "chip" and lib.bpm == 125 and len(lib.loops) == 28
+
+
+def test_file_handover_keeps_every_sound(tmp_path):
+    from apc_dj.audio.library import attach_library_file, build_library, build_library_file
+
+    path = str(tmp_path / "x.f32")
+    lib, shapes = build_library_file("chip", 130.0, None, path)
+    assert lib.oneshots[0].data is None  # die Klänge stecken nur in der Datei
+    lib = attach_library_file(lib, shapes, path)
+    ref = build_library("chip", 130.0)
+    assert not (tmp_path / "x.f32").exists()
+    for k in ref.loops:
+        assert np.array_equal(lib.loops[k].data, ref.loops[k].data)
+    for a, b in zip(lib.oneshots, ref.oneshots):
+        assert np.array_equal(a.data, b.data)
+    for name in ref.keys:
+        assert all(np.array_equal(x, y) for x, y in zip(lib.keys[name], ref.keys[name]))
+    assert all(np.array_equal(x, y) for x, y in zip(lib.clicks, ref.clicks))
