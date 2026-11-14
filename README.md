@@ -228,7 +228,7 @@ in der Karte **„Meine Aufnahmen“** zum Anhören und Herunterladen und liegen
 
 Lege WAV-Loops in [`sounds/eigene/`](sounds/eigene/README.md); sie erscheinen in Spalte 8.
 
-## Studio-Modus: Techno, Acid, Trance und 8-Bit
+## Studio-Modus: Hip-Hop, Techno, Acid, Trance und 8-Bit
 
 Für größere DJs gibt es einen zusätzlichen Modus. Er ändert nichts am normalen Start: `uv run apc-dj` und das
 Schreibtisch-Icon bleiben genau wie oben beschrieben.
@@ -237,7 +237,8 @@ Schreibtisch-Icon bleiben genau wie oben beschrieben.
 uv run apc-dj --studio            # oder dauerhaft: [studio] aktiv = true in config.toml
 ```
 
-Oben in der Oberfläche erscheinen dann zwei Auswahllisten: **Musikstil** und **Tempo**. Ein Stil tauscht alle Loops,
+Oben in der Oberfläche erscheinen dann zwei Auswahllisten: **Musikstil** und **Tempo**. Hip-Hop hat zusätzlich
+Swing: Jede zweite Sechzehntel kommt etwas später, bei allen Hip-Hop-Loops gleich – so grooven sie zusammen. Ein Stil tauscht alle Loops,
 One-Shots und die 4 Keyboard-Instrumente aus. Das Raster, die Farben der Spalten, die Fader und alle Knöpfe bleiben
 gleich. Beim Wechsel stoppen die Loops, weil jeder Stil sein eigenes Tempo hat. Ein Stil wird beim ersten Mal in ein
 paar Sekunden erzeugt (die Musik läuft so lange nicht), danach ist er sofort da.
@@ -245,6 +246,7 @@ paar Sekunden erzeugt (die Musik läuft so lange nicht), danach ist er sofort da
 | Stil | Tempo | Typische Klänge |
 |---|---|---|
 | 🎧 DJ-Schule | wie `bpm` in config.toml | der bisherige Klangsatz |
+| 🧢 Hip-Hop | 90 (80–100) | Boom-Bap, Lo-Fi und Trap mit Swing, E-Piano, 808-Bass, Scratches, Rückspulen, Platten-Knistern |
 | 🏭 Techno | 130 (120–145) | harte Kick, Rumble, Ride, Dub-Akkord mit Echo, Reese-Bass, hypnotische Sequenz |
 | 🧪 Acid | 128 (120–145) | quietschende Acid-Bässe mit Akzent und Slide, 808-Kuhglocke, Filter-Wellen |
 | 🌈 Trance/Rave | 138 (120–145) | Supersaw-Akkorde, Hoover, rollender Bass, Trance-Gate, Uplifter |
@@ -307,7 +309,7 @@ src/apc_dj/
   audio/synth.py      Oszillatoren, Filter, Hüllkurven, Instrumente (auch Acid, Supersaw, Hoover, 8-Bit)
   audio/drums.py      Schlagzeug und DJ-Effekte (auch 808/909-Klänge und Arcade-Geräusche)
   audio/seq.py        Taktraster, Akkordfolge, Spalten-Regeln (gleiche Lautstärke in jedem Stil)
-  audio/styles/       Musikstile: schule (der bisherige Klangsatz), techno, acid, trance, chip
+  audio/styles/       Musikstile: schule (der bisherige Klangsatz), hiphop, techno, acid, trance, chip
   audio/library.py    baut den Klangsatz eines Stils + lädt eigene WAVs
   audio/engine.py     Echtzeit-Mixer: Taktraster, quantisierte Loops, Fader, Filter, Metronom
   audio/fx.py         Live-Effekte des Studio-Modus (Wiederholer, Bremse, Echo, Gate, 8-Bit, Hochpass)

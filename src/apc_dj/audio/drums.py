@@ -388,3 +388,53 @@ def chip_laser() -> np.ndarray:
     t = t_axis(0.25)
     f = 2000 * 0.1 ** (t / 0.25)
     return normalize(osc_pulse(f, duty=0.125) * np.round((1 - t / 0.25) * 15) / 15, 0.5)
+
+
+# ================================================================== Hip-Hop
+
+
+def kick_dusty() -> np.ndarray:
+    """Staubige Boom-Bap-Kick: kurz, rund und etwas dumpf – wie von einer alten Platte."""
+    t = t_axis(0.5)
+    f = 50 + 90 * np.exp(-t * 30)
+    x = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 8)
+    x += 0.3 * lowpass(noise(0.5), 1500) * np.exp(-t * 60)
+    return normalize(lowpass(drive(x * 1.4, 2.0), 3000), 1.0)
+
+
+def snare_boombap() -> np.ndarray:
+    """Fette Hip-Hop-Snare: Snare + Clap übereinander, mit kurzem Raum."""
+    s = snare909()
+    c = clap()[:len(s)]
+    x = reverb(s + 0.6 * np.pad(c, (0, len(s) - len(c))), 0.5, mix=0.25, damp=6000)
+    return normalize(lowpass(x[:, 0] + x[:, 1], 9000), 0.8)
+
+
+def crackle(seconds: float) -> np.ndarray:
+    """Knistern einer Schallplatte: viele kleine Knackser und leises Rauschen."""
+    n = int(seconds * SR)
+    x = 0.04 * lowpass(noise(seconds), 4000)
+    g = rng()
+    for pos in g.integers(0, n - 200, int(seconds * 25)):
+        k = int(g.integers(20, 120))
+        x[pos:pos + k] += g.uniform(-1, 1) * np.exp(-np.arange(k) / (k / 4))
+    return highpass(x, 800)
+
+
+def rewind() -> np.ndarray:
+    """Rückspulen: die Platte wird schnell zurückgedreht – wiiiuuu!"""
+    t = t_axis(0.9)
+    f = 2400 * np.exp(-t * 3.5) + 150
+    wob = 1 + 0.3 * np.sin(2 * np.pi * 9 * t)
+    x = osc_saw(f * wob, len(t)) * 0.4 + sweep_noise(0.9, 6000, 400)
+    return normalize(bandpass(x, 200, 7000) * np.minimum(t / 0.02, 1) * (1 - t / 0.9), 0.6)
+
+
+def baby_scratch() -> np.ndarray:
+    """Schneller Scratch: die Platte wird zweimal kurz vor und zurück geschoben."""
+    t = t_axis(0.4)
+    speed = np.sin(2 * np.pi * 5 * t)
+    freq = 250 + 1300 * np.abs(speed)
+    tone = sum(np.sin(2 * np.pi * k * np.cumsum(freq) / SR) / k for k in range(1, 6))
+    x = (0.6 * tone + 0.4 * bandpass(noise(0.4), 900, 5000)) * np.abs(speed)
+    return normalize(x * np.minimum((0.4 - t) / 0.02, 1), 0.7)

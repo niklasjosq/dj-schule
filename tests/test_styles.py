@@ -113,3 +113,23 @@ def test_style_registry_is_consistent():
     for s in STYLES[1:]:
         assert s.default_bpm in s.bpm_choices
         assert s.color.startswith("#") and s.intro
+
+
+@pytest.mark.parametrize("sid", NEW_STYLES)
+def test_fastest_tempo_builds(sid):
+    """Krumme Tempi dürfen nicht an Rundungen scheitern (ein Sample zu kurz o. Ä.)."""
+    bpm = float(STYLE_BY_ID[sid].bpm_choices[-1])
+    lib = Library.build(bpm, None, sid)
+    assert all(s.data.shape[0] == 4 * bar_frames(bpm) for s in lib.loops.values())
+
+
+def test_swing_delays_every_second_sixteenth():
+    from apc_dj.audio.seq import Seq
+
+    s = Seq(120, swing=0.25)
+    click = np.ones(10, np.float32)
+    s.add(0.25, click)  # zweite Sechzehntel -> später
+    s.add(0.5, click)  # Achtel -> pünktlich
+    step = 24000 / 4
+    assert s.buf[int(step * 1.25), 0] > 0 and s.buf[int(step), 0] == 0
+    assert s.buf[int(step * 2), 0] > 0

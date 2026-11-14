@@ -461,12 +461,46 @@ def dubstab(f: float, dur: float) -> np.ndarray:
     return x * np.exp(-t * 7) * np.minimum(t / 0.003, 1)
 
 
+def epiano(f: float, dur: float) -> np.ndarray:
+    """E-Piano (FM): weicher Ton mit kurzem "Tine"-Klingeln – typisch für Hip-Hop und Soul."""
+    t = t_axis(dur + 0.5)
+    n = len(t)
+    body = fm(f, n, 1.0, 1.6, 2.5) * np.exp(-t * 1.2)
+    tine = 0.25 * fm(f, n, 14.0, 1.2, 30) * np.exp(-t * 18)
+    return 1.25 * (body + tine) * adsr(n, 0.003, 0.0, 1.0, dur, 0.35)
+
+
+def flute(f: float, dur: float) -> np.ndarray:
+    """Flöte: Sinus mit leiser Oktave, Atemgeräusch und spätem Vibrato."""
+    t = t_axis(dur + 0.12)
+    n = len(t)
+    ph = 2 * np.pi * np.cumsum(f * _vibrato(t, 0.25, 0.2, 5.0)) / SR
+    x = np.sin(ph) + 0.12 * np.sin(2 * ph) + 0.08 * bandpass(noise((n + 1) / SR)[:n], f * 1.5, min(f * 6, 9000))
+    return 0.9 * x * adsr(n, 0.06, 0.1, 0.85, dur, 0.1)
+
+
+def whistle(f: float, dur: float) -> np.ndarray:
+    """Pfeif-Synth: Sinus, der von unten in den Ton gleitet und vibriert (West-Coast-Hip-Hop)."""
+    t = t_axis(dur + 0.1)
+    fr = f * 2 ** (-1.0 * np.exp(-t / 0.05) / 12) * _vibrato(t, 0.15, 0.35, 6.0)
+    return 0.9 * osc_sine(fr) * adsr(len(t), 0.02, 0.1, 0.9, dur, 0.08)
+
+
+def lofi_klavier(f: float, dur: float) -> np.ndarray:
+    """Klavier wie von einer alten Kassette: dumpf und leicht leiernd."""
+    x = lowpass(klavier(f, dur), 2800)
+    i = np.arange(len(x), dtype=float)
+    wobble = (1.5 + 1.2 * np.sin(2 * np.pi * 0.7 * i / SR)) * SR / 1000
+    return 0.9 * np.interp(i - wobble, i, x, left=0.0)
+
+
 INSTRUMENTS = {
     "klavier": klavier, "lead": lead, "glocke": glocke, "bass": bass,
     "pad": pad, "pluck": pluck, "stab": stab, "vokal": vokal,
     "sub": sub, "reese": reese, "acid": acid, "squelch": squelch, "blip": blip,
     "supersaw": supersaw_inst, "hoover": hoover, "chip_square": chip_square, "chip_pulse": chip_pulse,
     "chip_tri": chip_tri, "orgel": orgel, "dubstab": dubstab,
+    "epiano": epiano, "flute": flute, "whistle": whistle, "lofi_klavier": lofi_klavier,
 }
 
 

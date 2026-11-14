@@ -189,7 +189,7 @@ def fx(bpm, d) -> list[Sound]:
     t = np.arange(n) / SR
     k = t / t[-1]
     cut = 200 * 30 ** np.sin(np.pi * k)
-    s.add(0, sweep_filter(noise(n / SR), cut, q=10) * np.sin(np.pi * k))
+    s.add(0, sweep_filter(noise((n + 1) / SR)[:n], cut, q=10) * np.sin(np.pi * k))
     out.append(loop("a_welle", "Filter-Welle", "🌊", s, 6, "Rauschen durch einen quietschenden Filter: rauf und wieder runter."))
 
     s = Seq(bpm)

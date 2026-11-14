@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from apc_dj.app import App, EventBus
 from apc_dj.audio.engine import AudioEngine
+from apc_dj.audio.styles import STYLES
 from apc_dj.web.server import create_server
 
 
@@ -87,7 +88,7 @@ def test_closing_the_browser_releases_held_effects(lib, tmp_path):
     client = TestClient(create_server(core))
     with client.websocket_connect("/ws") as ws:
         state = ws.receive_json()
-        assert state["features"] == {"studio": True} and len(state["styles"]) == 5 and len(state["fx"]) == 8
+        assert state["features"] == {"studio": True} and len(state["styles"]) == len(STYLES) and len(state["fx"]) == 8
         ws.send_json({"t": "press", "kind": "fx", "index": 3})
         assert ws.receive_json()["kind"] == "fx"
         assert core.fx_held == {3: "web"}

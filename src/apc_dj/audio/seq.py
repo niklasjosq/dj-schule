@@ -71,17 +71,24 @@ def circular(fn, buf: np.ndarray) -> np.ndarray:
 class Seq:
     """Schreibt Klänge auf ein Raster (in Schlägen); Ausklang wird an den Anfang gefaltet."""
 
-    def __init__(self, bpm: float, bars: int = LOOP_BARS):
+    def __init__(self, bpm: float, bars: int = LOOP_BARS, swing: float = 0.0):
         self.bpm = bpm
         self.bar = bar_frames(bpm)
         self.beat = self.bar / 4
         self.buf = np.zeros((self.bar * bars, 2), dtype=np.float32)
+        # Swing: jede zweite Sechzehntel kommt etwas später (Anteil einer Sechzehntel) – der "Groove".
+        # Alle Loops eines Stils nutzen denselben Wert, damit sie zusammen grooven.
+        self.swing = swing
 
     @property
     def seconds(self) -> float:
         return len(self.buf) / SR
 
     def add(self, beat: float, x: np.ndarray, gain: float = 1.0, pan: float = 0.0) -> None:
+        if self.swing:
+            q = beat * 4
+            if abs(q - round(q)) < 1e-6 and int(round(q)) % 2 == 1:
+                beat += self.swing / 4
         x = stereo(x, pan, gain)
         n = len(self.buf)
         s = int(round(beat * self.beat)) % n

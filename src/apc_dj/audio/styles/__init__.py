@@ -52,6 +52,17 @@ SCHULE = StyleInfo(
     ),
 )
 
+HIPHOP = StyleInfo(
+    "hiphop", "Hip-Hop", "🧢", "#ffbd6c",
+    "Hip-Hop! Boom-Bap, Lo-Fi und Trap: staubige Drums mit Swing, E-Piano, 808-Bass und Scratches.",
+    (
+        KeyInstrument("epiano", "E-Piano", "🎹", 0, 21),
+        KeyInstrument("lofi_klavier", "Lo-Fi-Klavier", "📻", 0, 36),
+        KeyInstrument("flute", "Flöte", "🪈", 0, 33),
+        KeyInstrument("sub", "808-Bass", "🔊", -24, 44),
+    ),
+    default_bpm=90, bpm_choices=(80, 85, 88, 90, 93, 95, 100), seed=15,
+)
 TECHNO = StyleInfo(
     "techno", "Techno", "🏭", "#4cc3ff",
     "Willkommen in der Techno-Welt! Harte Kick, Rumble, Ride-Becken und Akkorde mit Echo – wie in Berlin und Detroit.",
@@ -97,7 +108,7 @@ CHIP = StyleInfo(
     default_bpm=120, bpm_choices=STUDIO_BPMS, seed=14,
 )
 
-STYLES: list[StyleInfo] = [SCHULE, TECHNO, ACID, TRANCE, CHIP]
+STYLES: list[StyleInfo] = [SCHULE, HIPHOP, TECHNO, ACID, TRANCE, CHIP]
 STYLE_BY_ID = {s.id: s for s in STYLES}
 
 
