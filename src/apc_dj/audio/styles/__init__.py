@@ -52,7 +52,52 @@ SCHULE = StyleInfo(
     ),
 )
 
-STYLES: list[StyleInfo] = [SCHULE]
+TECHNO = StyleInfo(
+    "techno", "Techno", "🏭", "#4cc3ff",
+    "Willkommen in der Techno-Welt! Harte Kick, Rumble, Ride-Becken und Akkorde mit Echo – wie in Berlin und Detroit.",
+    (
+        KeyInstrument("blip", "Blip", "💠", 0, 33),
+        KeyInstrument("acid", "Acid", "🧪", -12, 16),
+        KeyInstrument("lead", "Synth", "🎛️", 0, 17),
+        KeyInstrument("bass", "Bass", "🎸", -24, 44),
+    ),
+    default_bpm=130, bpm_choices=STUDIO_BPMS, seed=11,
+)
+ACID = StyleInfo(
+    "acid", "Acid", "🧪", "#88ff4c",
+    "Acid! Hier quietscht und blubbert der Bass – ein Filter öffnet und schließt sich bei jedem Ton.",
+    (
+        KeyInstrument("acid", "Acid", "🧪", -12, 16),
+        KeyInstrument("squelch", "Quietsch-Lead", "🫧", 0, 21),
+        KeyInstrument("blip", "Blip", "💠", 0, 33),
+        KeyInstrument("bass", "Bass", "🎸", -24, 44),
+    ),
+    default_bpm=128, bpm_choices=STUDIO_BPMS, seed=12,
+)
+TRANCE = StyleInfo(
+    "trance", "Trance/Rave", "🌈", "#ff4cff",
+    "Trance und Rave: riesige Supersaw-Akkorde, ein heulender Hoover und Uplifter bis zum Höhepunkt!",
+    (
+        KeyInstrument("supersaw", "Supersaw", "🌈", 0, 52),
+        KeyInstrument("pluck", "Pluck", "🪕", 0, 36),
+        KeyInstrument("hoover", "Hoover", "🌀", -12, 48),
+        KeyInstrument("glocke", "Glocken", "🔔", 0, 12),
+    ),
+    default_bpm=138, bpm_choices=STUDIO_BPMS, seed=13,
+)
+CHIP = StyleInfo(
+    "chip", "Electro/8-Bit", "👾", "#ff7a3c",
+    "Electro und 8-Bit: 808-Drums und Klänge wie aus alten Spielkonsolen – piep, pling, hopp!",
+    (
+        KeyInstrument("chip_square", "Rechteck", "🟦", 0, 40),
+        KeyInstrument("chip_pulse", "Puls", "🔆", 0, 13),
+        KeyInstrument("chip_tri", "Dreieck", "🔺", -12, 9),
+        KeyInstrument("glocke", "Glocken", "🔔", 0, 12),
+    ),
+    default_bpm=120, bpm_choices=STUDIO_BPMS, seed=14,
+)
+
+STYLES: list[StyleInfo] = [SCHULE, TECHNO, ACID, TRANCE, CHIP]
 STYLE_BY_ID = {s.id: s for s in STYLES}
 
 

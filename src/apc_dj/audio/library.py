@@ -79,6 +79,7 @@ class Library:
         env = np.exp(-t * 120)
         lib.clicks = (stereo(np.sin(2 * np.pi * 1800 * t) * env, gain=0.5),
                       stereo(np.sin(2 * np.pi * 1100 * t) * env, gain=0.35))
+        render_note.cache_clear()  # Einzeltöne werden nicht mehr gebraucht – Speicher freigeben
         return lib
 
     def instrument(self, name: str) -> KeyInstrument:

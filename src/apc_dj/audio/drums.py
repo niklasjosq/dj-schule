@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from .synth import SR, bandpass, highpass, lowpass, noise, normalize, saw, t_axis
+from .synth import (
+    SR, bandpass, drive, echo, fm, highpass, lowpass, midi_to_freq, noise, normalize, osc_pulse, osc_saw,
+    osc_tri, reverb, rng, saw, sweep_filter, t_axis,
+)
 
 # ------------------------------------------------------------------ Drums
 
@@ -140,3 +143,248 @@ def sirene() -> np.ndarray:
     ph = 2 * np.pi * np.cumsum(f) / SR
     x = lowpass(np.sin(ph) + 0.3 * np.sin(3 * ph), 3000) * np.minimum(t / 0.05, 1) * np.minimum((1.6 - t) / 0.2, 1)
     return normalize(x, 0.5)
+
+
+# ================================================================== Elektronische Drums
+# 808-Metall: sechs Rechteck-Oszillatoren mit "schiefen" Frequenzen (Werner et al., ICMC 2014)
+METAL_FREQS = (205.3, 304.4, 369.6, 522.7, 540.0, 800.0)
+
+
+def metal6(seconds: float, scale: float = 1.0) -> np.ndarray:
+    t = t_axis(seconds)
+    return sum(np.sign(np.sin(2 * np.pi * f * scale * t + k)) for k, f in enumerate(METAL_FREQS)) / 6
+
+
+def kick909(decay: float = 5.5, punch: float = 1.0) -> np.ndarray:
+    t = t_axis(0.5)
+    f = 48 + 190 * np.exp(-t * 32) + 30 * np.exp(-t * 7)
+    body = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * decay)
+    click = punch * (0.5 * highpass(noise(0.5), 3000) * np.exp(-t * 400) + 0.4 * (t < 0.0015))
+    return normalize(drive(body * 1.6, 2.5) + click, 1.0)
+
+
+def kick808(decay: float = 0.9) -> np.ndarray:
+    t = t_axis(decay + 0.2)
+    f = 47 + 70 * np.exp(-t * 38)
+    x = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 4.6 / decay)
+    return normalize(drive(x, 1.6), 1.0)
+
+
+def snare808() -> np.ndarray:
+    t = t_axis(0.3)
+    tone = 0.6 * np.sin(2 * np.pi * 180 * t) * np.exp(-t * 22) + 0.4 * np.sin(2 * np.pi * 330 * t) * np.exp(-t * 28)
+    return normalize(tone + 0.8 * bandpass(noise(0.3), 2000, 10000) * np.exp(-t * 18), 0.8)
+
+
+def snare909() -> np.ndarray:
+    t = t_axis(0.35)
+    f = 185 * (1 + 0.3 * np.exp(-t * 40))
+    tone = 0.7 * np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 18)
+    return normalize(tone + bandpass(noise(0.35), 1500, 12000) * np.exp(-t * 12), 0.8)
+
+
+def hat808(open_: bool = False) -> np.ndarray:
+    d = 0.5 if open_ else 0.09
+    t = t_axis(d)
+    x = bandpass(metal6(d), 6500, 12000) + 0.3 * highpass(noise(d), 9000)
+    return normalize(highpass(x, 7000) * np.exp(-t * (6 if open_ else 45)), 0.45)
+
+
+def ride() -> np.ndarray:
+    t = t_axis(1.6)
+    x = bandpass(metal6(1.6, 1.4), 3500, 9000) * (0.6 * np.exp(-t * 2.2) + 0.4 * np.exp(-t * 12))
+    x += 0.25 * highpass(noise(1.6), 8000) * np.exp(-t * 6)
+    return normalize(x, 0.45)
+
+
+def cowbell808() -> np.ndarray:
+    t = t_axis(0.4)
+    x = np.sign(np.sin(2 * np.pi * 540 * t)) + np.sign(np.sin(2 * np.pi * 800 * t))
+    return normalize(bandpass(x, 500, 2600) * (0.6 * np.exp(-t * 60) + 0.4 * np.exp(-t * 9)), 0.5)
+
+
+def clave() -> np.ndarray:
+    t = t_axis(0.08)
+    return normalize(np.sin(2 * np.pi * 2500 * t) * np.exp(-t * 90), 0.5)
+
+
+def tom808(f: float) -> np.ndarray:
+    t = t_axis(0.6)
+    ff = f * (1 + 0.25 * np.exp(-t * 25))
+    return normalize(np.sin(2 * np.pi * np.cumsum(ff) / SR) * np.exp(-t * 5.5), 0.8)
+
+
+def metal_perc(f: float = 620) -> np.ndarray:
+    """Kurzer metallischer Schlag (FM) – wie auf ein Rohr geklopft."""
+    t = t_axis(0.25)
+    return normalize(fm(f, len(t), 3.47, 4.0, 20) * np.exp(-t * 22), 0.6)
+
+
+def clap_room() -> np.ndarray:
+    """Clap mit kurzem Raumhall."""
+    x = reverb(clap(), 0.6, mix=0.35, damp=7000)
+    return normalize(x[:, 0] + x[:, 1], 0.8)
+
+
+def chip_noise(seconds: float = 0.15, rate: float = 9000, decay: float = 25, periodic: bool = False) -> np.ndarray:
+    """Rausch-Kanal alter Konsolen: Zufallswerte, die eine Weile gehalten werden; periodic = metallischer."""
+    n = int(seconds * SR)
+    hold = max(int(SR / rate), 1)
+    vals = rng().choice([-1.0, 1.0], size=(n // hold + 1))
+    if periodic:
+        vals = np.resize(vals[:31], len(vals))
+    x = np.repeat(vals, hold)[:n]
+    env = np.round(np.exp(-np.arange(n) / SR * decay) * 15) / 15
+    return normalize(x * env, 0.6)
+
+
+def chip_kick() -> np.ndarray:
+    t = t_axis(0.25)
+    f = 45 + 300 * np.exp(-t * 30)
+    x = osc_tri(f, steps=16) * np.round(np.exp(-t * 12) * 15) / 15
+    return normalize(x, 1.0)
+
+
+# ================================================================== Elektronische Effekte
+
+
+def uplifter(seconds: float = 2.0) -> np.ndarray:
+    t = t_axis(seconds)
+    k = t / seconds
+    tone = osc_saw(300 * 6 ** k, len(t)) * 0.15
+    x = (sweep_noise(seconds, 300, 9000) + tone) * k ** 1.5
+    return normalize(highpass(x, 200), 0.6)
+
+
+def downlifter(seconds: float = 2.0) -> np.ndarray:
+    t = t_axis(seconds)
+    k = t / seconds
+    x = sweep_noise(seconds, 9000, 250) * (1 - k) ** 2
+    x += 0.4 * np.sin(2 * np.pi * np.cumsum(400 * 0.12 ** k) / SR) * (1 - k)
+    return normalize(x * np.minimum(t / 0.01, 1), 0.6)
+
+
+def sub_drop() -> np.ndarray:
+    t = t_axis(1.4)
+    f = 30 + 70 * np.exp(-t * 2.5)
+    return normalize(drive(np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 1.8), 1.5), 0.95)
+
+
+def zap() -> np.ndarray:
+    t = t_axis(0.3)
+    f = 80 + 3000 * np.exp(-t * 22)
+    return normalize(osc_pulse(f, duty=0.3) * np.exp(-t * 9), 0.5)
+
+
+def reverse_crash() -> np.ndarray:
+    x = crash()[::-1]
+    t = t_axis(len(x) / SR)
+    return normalize(x * (t / t[-1]) ** 2, 0.6)
+
+
+def impact() -> np.ndarray:
+    """Tiefer Einschlag mit Hall."""
+    x = reverb(boom(), 1.8, mix=0.3, damp=3000)
+    return normalize(x[:, 0] + x[:, 1], 0.95)
+
+
+def rave_stab() -> np.ndarray:
+    """Akkord-Schlag (a-Moll) – der Klang der frühen Rave-Partys."""
+    t = t_axis(0.7)
+    n = len(t)
+    x = sum(osc_saw(midi_to_freq(m) * d, n, p) for m in (57, 60, 64, 69) for d, p in ((0.996, 0.1), (1.004, 0.6)))
+    x += 0.5 * osc_pulse(midi_to_freq(45), n)
+    x = sweep_filter(x, 800 * 2 ** (2.5 * np.exp(-t / 0.12)), 2.0) * np.exp(-t * 5)
+    y = reverb(x * np.minimum(t / 0.003, 1), 1.2, mix=0.25)
+    return normalize(y[:, 0] + y[:, 1], 0.7)
+
+
+def dub_siren() -> np.ndarray:
+    t = t_axis(1.2)
+    f = 600 * 2 ** (0.5 * np.sign(np.sin(2 * np.pi * 3 * t)) + t * 0.6)
+    x = osc_pulse(f, duty=0.5) * np.minimum(t / 0.01, 1) * np.minimum((1.2 - t) / 0.1, 1)
+    y = echo(lowpass(x, 3000), 0.3, 0.5, 4)
+    return normalize(y[:, 0] + y[:, 1], 0.5)
+
+
+def resonant_sweep(seconds: float = 2.0) -> np.ndarray:
+    """Rauschen durch einen quietschenden Filter, der nach oben fährt."""
+    t = t_axis(seconds)
+    k = t / seconds
+    x = sweep_filter(noise(seconds), 200 * 40 ** k, q=9) * k ** 1.5
+    return normalize(x, 0.6)
+
+
+def snare_roll(seconds: float = 2.0) -> np.ndarray:
+    """Trommelwirbel, der immer schneller und lauter wird."""
+    out = np.zeros(int(seconds * SR))
+    s = snare909()
+    pos, gap = 0.0, 0.25
+    while pos < seconds - 0.02:
+        i = int(pos * SR)
+        seg = s[:len(out) - i] * (0.3 + 0.7 * pos / seconds)
+        out[i:i + len(seg)] += seg
+        pos += gap
+        gap = max(gap * 0.88, 0.03)
+    return normalize(out, 0.7)
+
+
+def _chip_notes(notes, seconds_each: float, duty: float = 0.5) -> np.ndarray:
+    parts = []
+    for m in notes:
+        t = t_axis(seconds_each)
+        parts.append(osc_pulse(midi_to_freq(m), len(t), duty) * np.round(np.exp(-t * 3) * 15) / 15)
+    return np.concatenate(parts)
+
+
+def coin() -> np.ndarray:
+    a = _chip_notes([83], 0.07)
+    t = t_axis(0.4)
+    b = osc_pulse(midi_to_freq(88), len(t)) * np.round(np.exp(-t * 7) * 15) / 15
+    return normalize(np.concatenate([a, b]), 0.5)
+
+
+def jump() -> np.ndarray:
+    t = t_axis(0.22)
+    f = 250 * 4 ** (t / 0.22)
+    return normalize(osc_pulse(f, duty=0.25) * np.round((1 - t / 0.22) * 15) / 15, 0.5)
+
+
+def powerup() -> np.ndarray:
+    scale = [57, 60, 64, 69, 72, 76, 81, 84, 88, 93]
+    return normalize(_chip_notes(scale + scale[-3:], 0.045), 0.5)
+
+
+def gameover() -> np.ndarray:
+    return normalize(_chip_notes([76, 72, 69, 67, 64, 60, 57, 45], 0.16, 0.25), 0.5)
+
+
+def explosion() -> np.ndarray:
+    n = int(1.3 * SR)
+    t = np.arange(n) / SR
+    rates = 6000 * np.exp(-t * 2.5) + 300
+    ph = np.cumsum(rates / SR).astype(int)
+    vals = rng().uniform(-1, 1, ph[-1] + 1)
+    x = vals[ph] * np.round(np.exp(-t * 3) * 15) / 15
+    k = chip_kick()
+    return normalize(x + 0.6 * np.pad(k, (0, n - len(k))), 0.95)
+
+
+def chip_riser(seconds: float = 2.0) -> np.ndarray:
+    """8-Bit-Riser: ein Arpeggio, das immer höher und schneller wird."""
+    out = []
+    total, m = 0.0, 0
+    tones = [57, 60, 64, 69]
+    while total < seconds:
+        d = max(0.09 * (1 - total / seconds), 0.025)
+        out.append(_chip_notes([tones[m % 4] + 12 * (m // 4 % 3)], d))
+        total += d
+        m += 1
+    x = np.concatenate(out)[:int(seconds * SR)]
+    return normalize(x * np.linspace(0.4, 1, len(x)), 0.5)
+
+
+def chip_laser() -> np.ndarray:
+    t = t_axis(0.25)
+    f = 2000 * 0.1 ** (t / 0.25)
+    return normalize(osc_pulse(f, duty=0.125) * np.round((1 - t / 0.25) * 15) / 15, 0.5)
