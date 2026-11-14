@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .audio.library import KEY_INSTRUMENTS, KEY_NOTES, ONESHOTS, Library
+from .audio.library import Library
+from .audio.seq import KEY_NOTES
 from .controller import PALETTE
 
 # (Name, Emoji, Palettenfarbe, Erklärung)
@@ -24,7 +25,6 @@ COLUMNS = [
 ]
 DRUM_SHOT_COLOR = 8
 FX_SHOT_COLOR = 53
-KEY_COLORS = {"klavier": 41, "lead": 17, "glocke": 12, "bass": 44}
 ROOT_COLOR = 56
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "H"]
 
@@ -40,7 +40,7 @@ class PadSpec:
     emoji: str
     color: int  # Palettenindex (0 = leer)
     info: str
-    col: int = 0  # Loop: Spalte; Shot: Index in ONESHOTS; Key: Index in KEY_NOTES
+    col: int = 0  # Loop: Spalte; Shot: Index in lib.oneshots; Key: Index in KEY_NOTES
     row: int = 0  # Loop: Variante 0..3
 
     def to_ui(self) -> dict:
@@ -66,16 +66,16 @@ def build_layout(lib: Library, instrument: str) -> dict[int, PadSpec]:
                 specs[p] = PadSpec(p, "loop", "leer", "", 0, f"{name}: Hier ist noch kein Sound. {info}", col, v)
             else:
                 specs[p] = PadSpec(p, "loop", snd.label, snd.emoji, color, f"{name}: {snd.info}", col, v)
-    for i, (sid, label, emoji, _, info) in enumerate(ONESHOTS):
+    for i, snd in enumerate(lib.oneshots):
         color = DRUM_SHOT_COLOR if i < 9 else FX_SHOT_COLOR
-        specs[shot_pad(i)] = PadSpec(shot_pad(i), "shot", label, emoji, color, info, i)
-    shift = next(s for n, _, _, s in KEY_INSTRUMENTS if n == instrument)
+        specs[shot_pad(i)] = PadSpec(shot_pad(i), "shot", snd.label, snd.emoji, color, snd.info, i)
+    inst = lib.instrument(instrument)
     for k, midi in enumerate(KEY_NOTES):
-        m = midi + shift
+        m = midi + inst.shift
         name = NOTE_NAMES[m % 12]
         root = m % 12 == 9
         specs[k] = PadSpec(
-            k, "key", f"{name}{m // 12 - 1}", "", ROOT_COLOR if root else KEY_COLORS[instrument],
+            k, "key", f"{name}{m // 12 - 1}", "", ROOT_COLOR if root else inst.color,
             "Der Grundton A – hier fühlt sich die Melodie zu Hause." if root
             else "Töne der a-Moll-Pentatonik: Alle passen zur Musik!", k)
     return specs

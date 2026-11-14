@@ -22,7 +22,7 @@ from typing import Callable, Optional
 import numpy as np
 from scipy import signal
 
-from .library import bar_frames
+from .seq import bar_frames
 from .recorder import Recorder
 from .synth import SR
 

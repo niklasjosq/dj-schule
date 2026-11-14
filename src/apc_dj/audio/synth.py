@@ -13,6 +13,12 @@ SR = 48000
 _rng = np.random.default_rng(7)
 
 
+def reseed(seed: int) -> None:
+    """Zufall neu starten – so klingt jeder Stil bei jedem Start gleich."""
+    global _rng
+    _rng = np.random.default_rng(seed)
+
+
 def midi_to_freq(m: float) -> float:
     return 440.0 * 2 ** ((m - 69) / 12)
 

@@ -19,7 +19,7 @@ import soundfile as sf
 
 from .audio.engine import COLUMNS as N_COLUMNS
 from .audio.engine import TRACK_KEYS, TRACK_SHOTS, AudioEngine
-from .audio.library import KEY_INSTRUMENTS, Library
+from .audio.library import Library
 from .audio.recorder import Recorder
 from .controller import PALETTE, SCENE_BASE, TRACK_BASE, ControlEvent, PadLed
 from .layout import COLUMNS, SCENE_LABELS, TRACK_LABELS, PadSpec, build_layout
@@ -99,7 +99,7 @@ class App:
 
     @property
     def inst_name(self) -> str:
-        return KEY_INSTRUMENTS[self.instrument][0]
+        return self.lib.instruments[self.instrument].id
 
     def info(self, emoji: str, title: str, text: str) -> None:
         self.bus.publish({"t": "info", "emoji": emoji, "title": title, "text": text})
@@ -185,7 +185,7 @@ class App:
             self.info("🎬", f"Szene {i + 1}",
                       "Eine Szene startet eine ganze Reihe auf einmal – ein neuer Teil des Songs!")
         elif i == 4:
-            self.set_instrument((self.instrument + 1) % len(KEY_INSTRUMENTS))
+            self.set_instrument((self.instrument + 1) % len(self.lib.instruments))
         elif i == 5:
             self.set_metronome(not self.engine.metronome)
         elif i == 6:
@@ -216,8 +216,8 @@ class App:
         with self.lock:
             self.instrument = idx
             self.layout = build_layout(self.lib, self.inst_name)
-            _, label, emoji, _ = KEY_INSTRUMENTS[idx]
-            self.info(emoji, f"Instrument: {label}", "Die Tasten unten spielen jetzt ein anderes Instrument.")
+            inst = self.lib.instruments[idx]
+            self.info(inst.emoji, f"Instrument: {inst.label}", "Die Tasten unten spielen jetzt ein anderes Instrument.")
             self.bus.publish(self.state())
             self.refresh_leds()
 
@@ -372,7 +372,7 @@ class App:
         elif t == "metronome":
             self.set_metronome(bool(data.get("on")))
         elif t == "instrument":
-            self.set_instrument((self.instrument + 1) % len(KEY_INSTRUMENTS))
+            self.set_instrument((self.instrument + 1) % len(self.lib.instruments))
         elif t == "record":
             self.set_recording(data.get("on") is True)
         elif t == "delete_recording":
@@ -388,9 +388,9 @@ class App:
     # ------------------------------------------------------------ Zustand für den Browser
 
     def status(self) -> dict:
-        _, label, emoji, _ = KEY_INSTRUMENTS[self.instrument]
+        inst = self.lib.instruments[self.instrument]
         return {"mode": self.mode, "metronome": self.engine.metronome,
-                "instrument": f"{emoji} {label}", "bpm": self.engine.bpm,
+                "instrument": f"{inst.emoji} {inst.label}", "bpm": self.engine.bpm,
                 "recording": self.recorder.active, "rec_seconds": int(self.recorder.seconds),
                 "rec_max": int(self.max_rec_seconds)}
 
