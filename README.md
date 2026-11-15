@@ -323,6 +323,7 @@ src/apc_dj/
   web/                FastAPI-Server + Oberfläche (HTML/CSS/JS ohne Build-Schritt)
 tools/midi_monitor.py
 tools/render_style.py Musikstil als WAV-Dateien speichern (zum Probehören)
+tools/push_check.py   Prüfung vor jedem Push: keine Zugangsdaten, nichts Persönliches (.githooks/pre-push)
 tests/                uv run pytest
 ```
 
@@ -339,6 +340,17 @@ tests/                uv run pytest
 * Über `/aufnahmen/…` liefert der Server nur Dateien mit dem Namensmuster `DJ-Set_….wav` aus dem
   Aufnahme-Ordner aus, keine anderen Dateien. Bei `--host 0.0.0.0` kann jedes Gerät im WLAN die Aufnahmen
   anhören.
+* Das Repository ist öffentlich. Vor jedem `git push` prüft [`tools/push_check.py`](tools/push_check.py),
+  dass nichts Vertrauliches mitkommt: Zugangsdaten und Schlüssel, Benutzerordner, Rechnername, E-Mail-Adressen,
+  private IP-Adressen, Logs, Lernfortschritt, Aufnahmen und eigene Sounds. Findet die Prüfung etwas, bricht
+  der Push ab. Einschalten, einmal pro Klon (also auch auf jedem Linux-Rechner):
+
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+
+  Von Hand prüfen: `python3 tools/push_check.py` (noch nicht gepushte Commits) oder mit `--all` die ganze
+  Geschichte.
 
 ## Lizenz
 
