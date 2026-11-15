@@ -166,6 +166,8 @@ uv run --with pillow python tools/make_desktop_app.py
 ```
 
 Das Skript erkennt das System selbst. Wenn der Projektordner verschoben wird, das Skript einfach erneut ausführen.
+Mit `--studio` startet das Icon direkt im [Studio-Modus](#studio-modus-hip-hop-techno-acid-trance-und-8-bit);
+ohne die Option wieder in der normalen DJ-Schule.
 
 * **macOS:** Legt **DJ-Schule.app** mit eigenem Icon auf den Schreibtisch. Ein Doppelklick startet die App ohne
   Terminal und öffnet den Browser. Beenden über das Dock oder mit `Cmd+Q`; dabei gehen auch die LEDs aus. Die

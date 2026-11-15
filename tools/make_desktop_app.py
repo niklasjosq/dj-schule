@@ -2,6 +2,7 @@
 
     uv run --with pillow python tools/make_desktop_app.py               # Icon + Starter + Schreibtisch
     uv run --with pillow python tools/make_desktop_app.py --no-install  # nur nach build/
+    uv run --with pillow python tools/make_desktop_app.py --studio      # Icon startet im Studio-Modus
 
 macOS: baut „DJ-Schule.app“. Doppelklick startet die DJ-Schule im Hintergrund und öffnet den Browser;
 „Beenden“ (Dock oder Cmd+Q) schickt Strg+C an die App, damit auch die LEDs ausgehen.
@@ -122,7 +123,7 @@ def _as(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def applescript(uv: str) -> str:
+def applescript(uv: str, args: str = "") -> str:
     repo, log = str(ROOT), str(ROOT / "data" / "apc-dj.log")
     return f'''
 global appPid, logFile
@@ -132,7 +133,7 @@ on run
 	set logFile to {_as(log)}
 	-- nur nohup in den Hintergrund schicken (nicht die ganze &&-Kette), sonst bleibt die Ausgabe-Pipe offen
 	set cmd to "cd " & quoted form of {_as(repo)} & " || exit 1; mkdir -p data; " & ¬
-		"nohup sh -c " & quoted form of ({_as(uv)} & " sync -q && exec .venv/bin/apc-dj") & ¬
+		"nohup sh -c " & quoted form of ({_as(uv)} & " sync -q && exec .venv/bin/apc-dj{args}") & ¬
 		" > " & quoted form of logFile & " 2>&1 < /dev/null & echo $!"
 	set appPid to do shell script cmd
 end run
@@ -165,11 +166,11 @@ end quit
 '''
 
 
-def build_app(uv: str, icns: Path) -> Path:
+def build_app(uv: str, icns: Path, args: str = "") -> Path:
     app = BUILD / f"{APP_NAME}.app"
     shutil.rmtree(app, ignore_errors=True)
     src = BUILD / "launcher.applescript"
-    src.write_text(applescript(uv), encoding="utf-8")
+    src.write_text(applescript(uv, args), encoding="utf-8")
     subprocess.run(["osacompile", "-s", "-o", str(app), str(src)], check=True)  # -s: bleibt offen
 
     res = app / "Contents" / "Resources"
@@ -197,7 +198,7 @@ def _desktop_exec(s: str) -> str:
     return f'"{s}"'.replace("\\", "\\\\").replace("%", "%%")
 
 
-def linux_start_script(uv: str) -> str:
+def linux_start_script(uv: str, args: str = "") -> str:
     return f"""#!/bin/sh
 # Startet die DJ-Schule (erzeugt von tools/make_desktop_app.py)
 printf '\\033]0;DJ-Schule\\007'
@@ -205,7 +206,7 @@ cd {_sh(str(ROOT))} || {{ echo "Projektordner nicht gefunden:" {_sh(str(ROOT))};
 echo "🎧 DJ-Schule startet … Zum Beenden Strg+C drücken oder dieses Fenster schließen."
 echo
 trap : INT    # Strg+C nur an die App, das Skript zeigt danach ggf. noch die Meldung
-{_sh(uv)} sync -q && .venv/bin/apc-dj
+{_sh(uv)} sync -q && .venv/bin/apc-dj{args}
 status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 130 ]; then
     echo
@@ -255,7 +256,7 @@ def _make_trusted(path: Path) -> None:
         pass
 
 
-def install_linux(uv: str, no_install: bool, dest: Path | None) -> None:
+def install_linux(uv: str, no_install: bool, dest: Path | None, args: str = "") -> None:
     icon = draw_icon(macos=False)
     out = BUILD / "linux"
     out.mkdir(parents=True, exist_ok=True)
@@ -267,7 +268,7 @@ def install_linux(uv: str, no_install: bool, dest: Path | None) -> None:
     icon_file = base / "dj-schule.png"
     icon.resize((512, 512), Image.LANCZOS).save(icon_file)
     start = base / "start.sh"
-    start.write_text(linux_start_script(uv), encoding="utf-8")
+    start.write_text(linux_start_script(uv, args), encoding="utf-8")
     start.chmod(0o755)
     entry = linux_desktop_entry(start, icon_file)
     (out / "dj-schule.desktop").write_text(entry, encoding="utf-8")
@@ -298,7 +299,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-install", action="store_true", help="nur nach build/ bauen, nichts installieren")
     ap.add_argument("--dest", type=Path, help="Zielordner statt des Schreibtischs")
+    ap.add_argument("--studio", action="store_true", help="Icon startet im Studio-Modus (apc-dj --studio)")
     args = ap.parse_args()
+    app_args = " --studio" if args.studio else ""
 
     uv = shutil.which("uv")
     if not uv:
@@ -307,7 +310,7 @@ def main() -> None:
     BUILD.mkdir(exist_ok=True)
 
     if sys.platform.startswith("linux"):
-        install_linux(uv, args.no_install, args.dest)
+        install_linux(uv, args.no_install, args.dest, app_args)
         return
     if sys.platform != "darwin":
         sys.exit("Nur für macOS und Linux.")
@@ -316,7 +319,7 @@ def main() -> None:
     icon.save(BUILD / "icon.png")
     icns = BUILD / "AppIcon.icns"
     make_icns(icon, icns)
-    app = build_app(uv, icns)
+    app = build_app(uv, icns, app_args)
     print(f"✅ gebaut: {app}")
 
     if not args.no_install:
